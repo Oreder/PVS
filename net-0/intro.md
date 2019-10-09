@@ -2,7 +2,7 @@
 
 ## Run all virtual machines in same time
 ```bash
-    lstart -o "--con0=-xterm" -d -net0
+    lstart -o "--con0=-xterm" -d net-0
 ```
 
 ## Close all virtual machines
@@ -12,7 +12,8 @@
 
 ## Restart all running virtual machines
 ```bash
-    lcrash
+    lcrash  # Close and delete all disk (or with options)
+    lstart
 ```
 
 ## More commands:
