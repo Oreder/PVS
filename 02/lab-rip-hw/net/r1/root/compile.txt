@@ -1,0 +1,2 @@
+# How to compile source file
+gcc ripcatch.c -o ripcatch

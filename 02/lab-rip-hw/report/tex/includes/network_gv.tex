@@ -1,0 +1,89 @@
+\documentclass{article}
+\usepackage[x11names, rgb]{xcolor}
+\usepackage[utf8]{inputenc}
+\usepackage{tikz}
+\usetikzlibrary{snakes,arrows,shapes}
+\usepackage{amsmath}
+%
+%
+
+\usepackage[active,tightpage]{preview}
+\PreviewEnvironment{tikzpicture}
+\setlength\PreviewBorder{0pt}%
+
+%
+
+\begin{document}
+\pagestyle{empty}
+%
+%
+%
+
+\enlargethispage{100cm}
+% Start of code
+\begin{tikzpicture}[>=latex',line join=bevel,]
+%%
+\node (r4) at (364.16bp,435.6bp) [draw=blue,diamond] {r4};
+  \node (r5) at (258.76bp,566.58bp) [draw=blue,diamond] {r5};
+  \node (wsp1) at (69.774bp,522.69bp) [draw=green,diamond] {wsp1};
+  \node (tap) at (527.95bp,194.24bp) [draw=brown,ellipse] {172.16.0.0/16};
+  \node (r1) at (465.93bp,297.33bp) [draw=blue,diamond] {r1};
+  \node (r2) at (510.96bp,533.18bp) [draw=blue,diamond] {r2};
+  \node (r3) at (209.26bp,337.17bp) [draw=blue,diamond] {r3};
+  \node (lan5) at (175.5bp,466.21bp) [draw=brown,ellipse] {10.10.5.0/24};
+  \node (ws1) at (34.588bp,180.21bp) [draw=green,diamond] {ws1};
+  \node (lan6) at (590.81bp,621.33bp) [draw=brown,ellipse] {10.10.6.0/24};
+  \node (Host) at (591.36bp,99.788bp) [draw=blue,diamond] {Host};
+  \node (lan4) at (337.9bp,319.14bp) [draw=brown,ellipse] {10.10.4.0/24};
+  \node (lan3) at (539.95bp,406.77bp) [draw=brown,ellipse] {10.10.3.0/24};
+  \node (lan2) at (383.71bp,552.81bp) [draw=brown,ellipse] {10.10.2.0/24};
+  \node (lan1) at (123.38bp,251.79bp) [draw=brown,ellipse] {10.10.1.0/24};
+  \node (Internet) at (655.84bp,9.5bp) [draw=brown,ellipse] {Internet};
+  \node (ws2) at (670.43bp,700.58bp) [draw=green,diamond] {ws2};
+  \draw [gray,] (Host) ..controls (613.05bp,69.416bp) and (637.26bp,35.512bp)  .. (Internet);
+  \draw [gray,] (r5) ..controls (289.13bp,563.23bp) and (319.23bp,559.92bp)  .. (lan2);
+  \definecolor{strokecol}{rgb}{0.0,0.0,0.0};
+  \pgfsetstrokecolor{strokecol}
+  \draw (349.01bp,570.65bp) node {eth0: 10.10.2.25};
+  \draw [gray,] (r1) ..controls (482.64bp,269.55bp) and (508.1bp,227.23bp)  .. (tap);
+  \draw (452.55bp,256.76bp) node {eth2: 172.16.0.20};
+  \draw [gray,] (r4) ..controls (370.04bp,470.82bp) and (377.96bp,518.36bp)  .. (lan2);
+  \draw (332.97bp,503.93bp) node {eth1: 10.10.2.24};
+  \draw [gray,] (r3) ..controls (239.99bp,332.86bp) and (273.3bp,328.19bp)  .. (lan4);
+  \draw (301.84bp,339.44bp) node {eth0: 10.10.4.43};
+  \draw [gray,] (r4) ..controls (356.42bp,401.25bp) and (345.69bp,353.67bp)  .. (lan4);
+  \draw (310.04bp,386.92bp) node {eth0: 10.10.4.44};
+  \draw [gray,] (ws2) ..controls (646.84bp,677.1bp) and (618.68bp,649.07bp)  .. (lan6);
+  \draw (593.49bp,671.81bp) node {eth0: 10.10.6.6};
+  \draw [gray,] (Host) ..controls (570.85bp,130.34bp) and (548.15bp,164.16bp)  .. (tap);
+  \draw (521.06bp,157.66bp) node {tap: 172.16.0.1};
+  \draw [gray,] (r2) ..controls (480.44bp,537.89bp) and (447.14bp,543.03bp)  .. (lan2);
+  \draw (439.15bp,531.59bp) node {eth1: 10.10.2.22};
+  \draw [gray,] (r1) ..controls (434.97bp,302.6bp) and (400.77bp,308.43bp)  .. (lan4);
+  \draw (372.76bp,296.72bp) node {eth1: 10.10.4.41};
+  \draw [gray,] (r5) ..controls (237.27bp,540.67bp) and (202.6bp,498.87bp)  .. (lan5);
+  \draw (177.7bp,527.78bp) node {eth1: 10.10.5.55};
+  \draw [gray,] (r2) ..controls (519.27bp,496.96bp) and (531.58bp,443.26bp)  .. (lan3);
+  \draw (484.44bp,479.55bp) node {eth0: 10.10.3.32};
+  \draw [gray,] (r1) ..controls (485.24bp,325.89bp) and (516.85bp,372.61bp)  .. (lan3);
+  \draw (460.9bp,360.02bp) node {eth0: 10.10.3.31};
+  \draw [gray,] (r3) ..controls (199.75bp,373.54bp) and (185.18bp,429.2bp)  .. (lan5);
+  \draw (151.43bp,411.02bp) node {eth1: 10.10.5.53};
+  \draw [gray,] (r2) ..controls (532.09bp,556.51bp) and (563.54bp,591.22bp)  .. (lan6);
+  \draw (508.08bp,584.76bp) node {eth2: 10.10.6.62};
+  \draw [gray,] (r3) ..controls (187.09bp,315.13bp) and (153.32bp,281.57bp)  .. (lan1);
+  \draw (127.61bp,306.26bp) node {eth2: 10.10.1.13};
+  \draw [gray,] (wsp1) ..controls (102.97bp,504.95bp) and (134.82bp,487.94bp)  .. (lan5);
+  \draw (81.496bp,486.36bp) node {eth0: 10.10.5.5};
+  \draw [gray,] (ws1) ..controls (60.624bp,201.2bp) and (91.24bp,225.88bp)  .. (lan1);
+  \draw (38.5bp,223.9bp) node {eth0: 10.10.1.1};
+%
+\end{tikzpicture}
+% End of code
+
+%
+\end{document}
+%
+
+
+
