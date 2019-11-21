@@ -1,0 +1,1244 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage{listings}
+\lstset{
+    basicstyle=\ttfamily,
+    columns=flexible,
+    breaklines=true
+}
+
+\input{header.tex}
+
+\title{Отчёт по лабораторной работе \\ <<Механизмы протокола TCP>>}
+\author{Binh D. Nguyen}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+% Текст отчёта должен быть читаемым!!! Написанное здесь является рыбой.
+
+\section{Установка и разрыв соединения}
+
+Дампим интерфейсы с2 при попытке соединения с1 с сервером (порт 9)
+
+\begin{lstlisting}
+c1:~# telnet 10.50.0.2 9
+Trying 10.50.0.2...
+Connected to 10.50.0.2.
+Escape character is '^]'.
+123
+hello
+test something when no mss in c2
+
+c2:~# tcpdump -n -i eth0 tcp
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+23:14:52.241200 IP 10.10.0.2.33023 > 10.50.0.2.9: F 554796618:554796618(0) ack 568876507 win 2920 <nop,nop,timestamp 67950 27133>
+23:14:52.278331 IP 10.50.0.2.9 > 10.10.0.2.33023: F 1:1(0) ack 1 win 2896 <nop,nop,timestamp 68006 67950>
+23:14:52.278854 IP 10.10.0.2.33023 > 10.50.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 67953 68006>
+23:14:57.052477 IP 10.10.0.2.53599 > 10.50.0.2.9: S 3628216548:3628216548(0) win 5840 <mss 1460,sackOK,timestamp 68421 0,nop,wscale 1>
+23:14:57.053260 IP 10.50.0.2.9 > 10.10.0.2.53599: S 3625631397:3625631397(0) ack 3628216549 win 5792 <mss 536,sackOK,timestamp 68485 68421,nop,wscale 1>
+23:14:57.053475 IP 10.10.0.2.53599 > 10.50.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 68421 68485>
+23:14:59.409392 IP 10.10.0.2.53599 > 10.50.0.2.9: P 1:6(5) ack 1 win 2920 <nop,nop,timestamp 68667 68485>
+23:14:59.410631 IP 10.50.0.2.9 > 10.10.0.2.53599: . ack 6 win 2896 <nop,nop,timestamp 68721 68667>
+23:15:03.031777 IP 10.10.0.2.53599 > 10.50.0.2.9: P 6:13(7) ack 1 win 2920 <nop,nop,timestamp 69029 68721>
+23:15:03.032785 IP 10.50.0.2.9 > 10.10.0.2.53599: . ack 13 win 2896 <nop,nop,timestamp 69083 69029>
+23:15:18.289747 IP 10.10.0.2.53599 > 10.50.0.2.9: P 13:47(34) ack 1 win 2920 <nop,nop,timestamp 70555 69083>
+23:15:18.290978 IP 10.50.0.2.9 > 10.10.0.2.53599: . ack 47 win 2896 <nop,nop,timestamp 70609 70555>
+^Z
+[1]+  Stopped                 tcpdump -n -i eth0 tcp
+\end{lstlisting}
+
+Отметим, что механизм MSS clamping включается в сценарии /etc/firewall на маршрутизаторах c3 и c4.
+\begin{lstlisting}
+c3:~# /etc/firewall
+с4:~# /etc/firewall
+\end{lstlisting}
+
+\section{Окно получателя}
+
+Впервые необходимо запускать сервер с4
+\begin{lstlisting}
+c4:~# gcc win.c
+c4:~# ./a.out 3002 2 10
+\end{lstlisting}
+
+Здесь 3002 — номер порта, который она будет слушать, 2 — величина задержки в секундах, 5 — число принимаемых (после паузы) пакетов.
+Затем запустим на машине c3 программу tcpdump
+\begin{lstlisting}
+c3:~# tcpdump -nvt -i eth0 tcp > log.txt
+\end{lstlisting}
+
+Теперь запустим клиента на машине c1
+\begin{lstlisting}
+c1:~# netcat 10.30.0.2 3002 </dev/zero/
+\end{lstlisting}
+
+Результат сохранен в файле log.txt
+\begin{lstlisting}
+IP (tos 0x0, ttl 63, id 36012, offset 0, flags [DF], proto TCP (6), length 60) 10.10.0.2.43113 > 10.30.0.2.3002: S, cksum 0xbd7f (correct), 3121987153:3121987153(0) win 5840 <mss 1460,sackOK,timestamp 209$
+IP (tos 0x0, ttl 63, id 0, offset 0, flags [DF], proto TCP (6), length 60) 10.30.0.2.3002 > 10.10.0.2.43113: S, cksum 0x8e65 (correct), 3117306980:3117306980(0) ack 3121987154 win 2096 <mss 536,sackOK,tim$
+IP (tos 0x0, ttl 63, id 36013, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.43113 > 10.30.0.2.3002: ., cksum 0xb638 (correct), ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36014, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 1:525(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36015, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 525:1049(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26474, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xb970 (correct), ack 525 win 1572 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26475, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xb558 (correct), ack 1049 win 2096 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 36016, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 1049:1573(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36017, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 1573:2097(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36018, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 2097:2621(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36019, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 2621:3145(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26476, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xb140 (correct), ack 1573 win 2620 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26477, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xad28 (correct), ack 2097 win 3144 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26478, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xa910 (correct), ack 2621 win 3668 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26479, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xa4f8 (correct), ack 3145 win 4192 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 36020, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 3145:3669(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36021, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 3669:4193(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36022, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 4193:4717(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36023, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 4717:5241(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36024, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 5241:5765(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36025, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 5765:6289(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36026, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 6289:6813(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36027, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 6813:7337(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26480, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xa0e0 (correct), ack 3669 win 4716 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26481, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x9cc8 (correct), ack 4193 win 5240 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26482, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x98b0 (correct), ack 4717 win 5764 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26483, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x9498 (correct), ack 5241 win 6288 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26484, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x9080 (correct), ack 5765 win 6812 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26485, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x8c68 (correct), ack 6289 win 7336 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26486, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x8850 (correct), ack 6813 win 7860 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26487, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x8438 (correct), ack 7337 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 36028, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 7337:7861(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36029, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 7861:8385(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36030, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 8385:8909(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36031, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 8909:9433(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36032, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 9433:9957(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36033, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 9957:10481(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36034, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 10481:11005(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36035, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 11005:11529(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36036, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 11529:12053(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36037, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 12053:12577(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36038, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 12577:13101(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36039, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 13101:13625(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+
+*** big win appears ***
+IP (tos 0x0, ttl 63, id 26488, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x822c (correct), ack 7861 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26489, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x8020 (correct), ack 8385 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26490, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x7c08 (correct), ack 9433 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26491, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x77f0 (correct), ack 10481 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26492, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x73d8 (correct), ack 11529 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26493, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x6fc0 (correct), ack 12577 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26494, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x6ba8 (correct), ack 13625 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 36040, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 13625:14149(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36041, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 14149:14673(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36042, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 14673:15197(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36043, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 15197:15721(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36044, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 15721:16245(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36045, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 16245:16769(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36046, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 16769:17293(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36047, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 17293:17817(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36048, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 17817:18341(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36049, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 18341:18865(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36050, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 18865:19389(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36052, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 19913:20437(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36053, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 20437:20961(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36054, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 20961:21485(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36055, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 21485:22009(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26495, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x6790 (correct), ack 14673 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26496, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x6378 (correct), ack 15721 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26497, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x5f60 (correct), ack 16769 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26498, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x5b48 (correct), ack 17817 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26499, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x5730 (correct), ack 18865 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26500, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x90ab (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26501, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x8e9f (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 36056, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 22009:22533(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36057, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 22533:23057(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36058, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 23057:23581(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36059, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 23581:24105(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36060, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 24105:24629(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36061, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 24629:25153(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36062, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 25153:25677(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36063, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 25677:26201(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36064, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 26201:26725(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36065, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 26725:27249(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36066, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 27249:27773(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26502, offset 0, flags [DF], proto TCP (6), length 72) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xcfc1 (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26503, offset 0, flags [DF], proto TCP (6), length 72) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xcdb5 (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26504, offset 0, flags [DF], proto TCP (6), length 72) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xcba9 (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26505, offset 0, flags [DF], proto TCP (6), length 72) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xc99d (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26506, offset 0, flags [DF], proto TCP (6), length 72) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xc791 (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26507, offset 0, flags [DF], proto TCP (6), length 72) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xc585 (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26508, offset 0, flags [DF], proto TCP (6), length 72) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xc379 (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26509, offset 0, flags [DF], proto TCP (6), length 72) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xc16d (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26510, offset 0, flags [DF], proto TCP (6), length 72) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xbf61 (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26511, offset 0, flags [DF], proto TCP (6), length 72) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xbd55 (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26512, offset 0, flags [DF], proto TCP (6), length 72) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xbb49 (correct), ack 19389 win 8372 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 36073, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 19389:19913(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36074, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 20961:21485(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26513, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x68c1 (correct), ack 20961 win 7586 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 36075, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 21485:22009(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26514, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x67bb (correct), ack 21485 win 7324 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 36076, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 30917:31441(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36077, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 31441:31965(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36078, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 31965:32489(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36079, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 32489:33013(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26515, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x44d0 (correct), ack 27773 win 4180 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 36080, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 33013:33537(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26516, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x2a53 (correct), ack 27773 win 4180 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26517, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x2847 (correct), ack 27773 win 4180 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26518, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x263b (correct), ack 27773 win 4180 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26519, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x242f (correct), ack 27773 win 4180 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26520, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x2223 (correct), ack 27773 win 4180 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 36081, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 27773:28297(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36082, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 28297:28821(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36083, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 28821:29345(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36084, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 29345:29869(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26521, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x211d (correct), ack 28297 win 3918 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 36085, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 29869:30393(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26522, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x2017 (correct), ack 28821 win 3656 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26523, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x1f11 (correct), ack 29345 win 3394 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26524, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x1dff (correct), ack 29869 win 3144 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 26525, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x19e7 (correct), ack 30393 win 3668 <nop,nop,timestamp 209679 209692,nop,nop,sack$
+IP (tos 0x0, ttl 63, id 36086, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 30393:30917(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26526, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x2e40 (correct), ack 33537 win 4192 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 36087, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 33537:34061(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36088, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 34061:34585(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36089, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 34585:35109(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36090, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 35109:35633(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26527, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x2a28 (correct), ack 34061 win 4716 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 36091, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 35633:36157(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26528, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x2610 (correct), ack 34585 win 5240 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26529, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x21f8 (correct), ack 35109 win 5764 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26530, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x1de0 (correct), ack 35633 win 6288 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26531, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x19c8 (correct), ack 36157 win 6812 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 36092, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 36157:36681(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36093, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 36681:37205(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26532, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x15b0 (correct), ack 36681 win 7336 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 36094, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 37205:37729(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36095, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 37729:38253(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36096, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 38253:38777(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36097, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 38777:39301(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36098, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 39301:39825(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36099, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 39825:40349(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36100, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 40349:40873(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36101, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 40873:41397(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36102, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 41397:41921(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26533, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x1198 (correct), ack 37205 win 7860 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 26534, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x0d80 (correct), ack 37729 win 8384 <nop,nop,timestamp 209679 209692>
+IP (tos 0x0, ttl 63, id 36103, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 41921:42445(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36104, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 42445:42969(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 36105, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 42969:43493(524) ack 1 win 2920 <nop,nop,timestamp 209692 209679>
+IP (tos 0x0, ttl 63, id 26535, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x023a (correct), ack 43493 win 5502 <nop,nop,timestamp 209683 209692>
+IP (tos 0x0, ttl 63, id 36106, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 43493:44017(524) ack 1 win 2920 <nop,nop,timestamp 209696 209683>
+IP (tos 0x0, ttl 63, id 36107, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 44017:44541(524) ack 1 win 2920 <nop,nop,timestamp 209696 209683>
+IP (tos 0x0, ttl 63, id 36108, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 44541:45065(524) ack 1 win 2920 <nop,nop,timestamp 209696 209683>
+IP (tos 0x0, ttl 63, id 36109, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 45065:45589(524) ack 1 win 2920 <nop,nop,timestamp 209696 209683>
+IP (tos 0x0, ttl 63, id 36110, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 45589:46113(524) ack 1 win 2920 <nop,nop,timestamp 209696 209683>
+IP (tos 0x0, ttl 63, id 36111, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 46113:46637(524) ack 1 win 2920 <nop,nop,timestamp 209696 209683>
+IP (tos 0x0, ttl 63, id 36112, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 46637:47161(524) ack 1 win 2920 <nop,nop,timestamp 209696 209683>
+IP (tos 0x0, ttl 63, id 36113, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 47161:47685(524) ack 1 win 2920 <nop,nop,timestamp 209696 209683>
+IP (tos 0x0, ttl 63, id 36114, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 47685:48209(524) ack 1 win 2920 <nop,nop,timestamp 209696 209683>
+IP (tos 0x0, ttl 63, id 36115, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 48209:48733(524) ack 1 win 2920 <nop,nop,timestamp 209696 209683>
+IP (tos 0x0, ttl 63, id 36116, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 48733:49257(524) ack 1 win 2920 <nop,nop,timestamp 209696 209683>
+IP (tos 0x0, ttl 63, id 26536, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xf0cb (correct), ack 49257 win 4192 <nop,nop,timestamp 209687 209696>
+IP (tos 0x0, ttl 63, id 36117, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 49257:49781(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36118, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 49781:50305(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36119, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 50305:50829(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36120, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 50829:51353(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36121, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 51353:51877(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36122, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 51877:52401(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36123, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 52401:52925(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36124, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 52925:53449(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36125, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 53449:53973(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36126, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 53973:54497(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36127, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 54497:55021(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 26537, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xecae (correct), ack 49781 win 4716 <nop,nop,timestamp 209687 209701>
+IP (tos 0x0, ttl 63, id 26538, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xe896 (correct), ack 50305 win 5240 <nop,nop,timestamp 209687 209701>
+IP (tos 0x0, ttl 63, id 26539, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xe47e (correct), ack 50829 win 5764 <nop,nop,timestamp 209687 209701>
+IP (tos 0x0, ttl 63, id 26540, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xe066 (correct), ack 51353 win 6288 <nop,nop,timestamp 209687 209701>
+IP (tos 0x0, ttl 63, id 26541, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xdccc (correct), ack 51877 win 6686 <nop,nop,timestamp 209687 209701>
+IP (tos 0x0, ttl 63, id 36128, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 55021:55545(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36129, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 55545:56069(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36130, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 56069:56593(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36131, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 56593:57117(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 36132, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 57117:57641(524) ack 1 win 2920 <nop,nop,timestamp 209701 209687>
+IP (tos 0x0, ttl 63, id 26542, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xd185 (correct), ack 57641 win 3804 <nop,nop,timestamp 209692 209701>
+IP (tos 0x0, ttl 63, id 36133, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 57641:58165(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36134, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 58165:58689(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36135, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 58689:59213(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36136, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 59213:59737(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36137, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 59737:60261(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36138, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 60261:60785(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36139, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 60785:61309(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36140, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 61309:61833(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36141, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 61833:62357(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36142, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 62357:62881(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36143, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 62881:63405(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 26543, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xbf9c (correct), ack 61833 win 4192 <nop,nop,timestamp 209692 209706>
+IP (tos 0x0, ttl 63, id 36144, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 63405:63929(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36145, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 63929:64453(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36146, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 64453:64977(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36147, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 64977:65501(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36148, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 65501:66025(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36149, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 66025:66549(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36150, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 66549:67073(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 36151, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 67073:67597(524) ack 1 win 2920 <nop,nop,timestamp 209706 209692>
+IP (tos 0x0, ttl 63, id 26544, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xb350 (correct), ack 67597 win 1572 <nop,nop,timestamp 209696 209706>
+IP (tos 0x0, ttl 63, id 36152, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 67597:68121(524) ack 1 win 2920 <nop,nop,timestamp 209710 209696>
+IP (tos 0x0, ttl 63, id 36153, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 68121:68645(524) ack 1 win 2920 <nop,nop,timestamp 209710 209696>
+IP (tos 0x0, ttl 63, id 36154, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 68645:69169(524) ack 1 win 2920 <nop,nop,timestamp 209710 209696>
+IP (tos 0x0, ttl 63, id 36155, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 69169:69693(524) ack 1 win 2920 <nop,nop,timestamp 209710 209696>
+IP (tos 0x0, ttl 63, id 36156, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 69693:70217(524) ack 1 win 2920 <nop,nop,timestamp 209710 209696>
+IP (tos 0x0, ttl 63, id 36157, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 70217:70741(524) ack 1 win 2920 <nop,nop,timestamp 209710 209696>
+IP (tos 0x0, ttl 63, id 26545, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xaf34 (correct), ack 68121 win 2096 <nop,nop,timestamp 209696 209710>
+IP (tos 0x0, ttl 63, id 26546, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0xab1c (correct), ack 68645 win 2620 <nop,nop,timestamp 209696 209710>
+IP (tos 0x0, ttl 63, id 36158, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 70741:71265(524) ack 1 win 2920 <nop,nop,timestamp 209710 209696>
+IP (tos 0x0, ttl 63, id 36159, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 71265:71789(524) ack 1 win 2920 <nop,nop,timestamp 209710 209696>
+IP (tos 0x0, ttl 63, id 36160, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 71789:72313(524) ack 1 win 2920 <nop,nop,timestamp 209710 209696>
+IP (tos 0x0, ttl 63, id 36161, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 72313:72837(524) ack 1 win 2920 <nop,nop,timestamp 209710 209696>
+IP (tos 0x0, ttl 63, id 36162, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 72837:73361(524) ack 1 win 2920 <nop,nop,timestamp 209710 209696>
+IP (tos 0x0, ttl 63, id 36163, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 73361:73885(524) ack 1 win 2920 <nop,nop,timestamp 209710 209696>
+IP (tos 0x0, ttl 63, id 26547, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x9c1e (correct), ack 73885 win 1214 <nop,nop,timestamp 209700 209710>
+IP (tos 0x0, ttl 63, id 36164, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 73885:74409(524) ack 1 win 2920 <nop,nop,timestamp 209714 209700>
+IP (tos 0x0, ttl 63, id 36165, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 74409:74933(524) ack 1 win 2920 <nop,nop,timestamp 209714 209700>
+IP (tos 0x0, ttl 63, id 36166, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 74933:75457(524) ack 1 win 2920 <nop,nop,timestamp 209714 209700>
+IP (tos 0x0, ttl 63, id 36167, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 75457:75981(524) ack 1 win 2920 <nop,nop,timestamp 209714 209700>
+IP (tos 0x0, ttl 63, id 26548, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x948c (correct), ack 75981 win 1048 <nop,nop,timestamp 209704 209714>
+IP (tos 0x0, ttl 63, id 36168, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 75981:76505(524) ack 1 win 2920 <nop,nop,timestamp 209718 209704>
+IP (tos 0x0, ttl 63, id 36169, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 76505:77029(524) ack 1 win 2920 <nop,nop,timestamp 209718 209704>
+IP (tos 0x0, ttl 63, id 36170, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 77029:77553(524) ack 1 win 2920 <nop,nop,timestamp 209718 209704>
+IP (tos 0x0, ttl 63, id 36171, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 77553:78077(524) ack 1 win 2920 <nop,nop,timestamp 209718 209704>
+
+*** win here is close to zero ***
+IP (tos 0x0, ttl 63, id 26549, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x906b (correct), ack 78077 win 0 <nop,nop,timestamp 209709 209718>
+IP (tos 0x0, ttl 63, id 36172, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.43113 > 10.30.0.2.3002: ., cksum 0x84e5 (correct), ack 1 win 2920 <nop,nop,timestamp 209749 209709>
+IP (tos 0x0, ttl 63, id 26550, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x9051 (correct), ack 78077 win 0 <nop,nop,timestamp 209735 209718>
+IP (tos 0x0, ttl 63, id 36173, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.43113 > 10.30.0.2.3002: ., cksum 0x8497 (correct), ack 1 win 2920 <nop,nop,timestamp 209801 209735>
+IP (tos 0x0, ttl 63, id 26551, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x901d (correct), ack 78077 win 0 <nop,nop,timestamp 209787 209718>
+IP (tos 0x0, ttl 63, id 26552, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x8d84 (correct), ack 78077 win 572 <nop,nop,timestamp 209880 209718>
+IP (tos 0x0, ttl 63, id 36174, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 78077:78601(524) ack 1 win 2920 <nop,nop,timestamp 209894 209880>
+IP (tos 0x0, ttl 63, id 36175, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 78601:79125(524) ack 1 win 2920 <nop,nop,timestamp 209894 209880>
+IP (tos 0x0, ttl 63, id 26553, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: ., cksum 0x8768 (correct), ack 78601 win 1436 <nop,nop,timestamp 209880 209894>
+IP (tos 0x0, ttl 63, id 36176, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: P 79125:79649(524) ack 1 win 2920 <nop,nop,timestamp 209894 209880>
+IP (tos 0x0, ttl 63, id 36177, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 79649:80173(524) ack 1 win 2920 <nop,nop,timestamp 209894 209880>
+IP (tos 0x0, ttl 63, id 36178, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 80173:80697(524) ack 1 win 2920 <nop,nop,timestamp 209894 209880>
+IP (tos 0x0, ttl 63, id 36179, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.43113 > 10.30.0.2.3002: . 80697:81221(524) ack 1 win 2920 <nop,nop,timestamp 209894 209880>
+IP (tos 0x0, ttl 63, id 0, offset 0, flags [DF], proto TCP (6), length 40) 10.30.0.2.3002 > 10.10.0.2.43113: R, cksum 0xd95d (correct), 3117306981:3117306981(0) win 0
+IP (tos 0x0, ttl 63, id 0, offset 0, flags [DF], proto TCP (6), length 40) 10.30.0.2.3002 > 10.10.0.2.43113: R, cksum 0xd95d (correct), 3117306981:3117306981(0) win 0
+IP (tos 0x0, ttl 63, id 0, offset 0, flags [DF], proto TCP (6), length 40) 10.30.0.2.3002 > 10.10.0.2.43113: R, cksum 0xd95d (correct), 3117306981:3117306981(0) win 0
+IP (tos 0x0, ttl 63, id 0, offset 0, flags [DF], proto TCP (6), length 40) 10.30.0.2.3002 > 10.10.0.2.43113: R, cksum 0xd95d (correct), 3117306981:3117306981(0) win 0
+
+*** win grows up again ***
+IP (tos 0x0, ttl 63, id 26554, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.3002 > 10.10.0.2.43113: R, cksum 0x84d0 (correct), 1:1(0) ack 79125 win 1572 <nop,nop,timestamp 209880 209894>
+\end{lstlisting}
+
+Теперь проведём такой же эксперимент на c4, запустив сервер win внутри программы screen или же в фоновом режиме (используя знак Амперсанда). Затем воспользуемся screen для запуска программы tcpdump на интерфейсе lo. После завершения подготовки запустим клиента на всё той же
+машине c4. 
+\begin{lstlisting}
+c4:~# ./a.out 3002 2 10 &
+[1] 715
+c4:~# screen -r <tab>
+c4:~# netcat localhost 3992 </dev/zero
+
+c4:~# tcpdump -n -i lo tcp
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on lo, link-type EN10MB (Ethernet), capture size 96 bytes
+18:33:43.738845 IP 127.0.0.1.41760 > 127.0.0.1.3002: S 3677620973:3677620973(0) win 32792 <mss 16396,sackOK,timestamp 634147 0,nop,wscale 1>
+18:33:43.738853 IP 127.0.0.1.3002 > 127.0.0.1.41760: S 3674180890:3674180890(0) ack 3677620974 win 32768 <mss 16396,sackOK,timestamp 634147 634147,nop,wscale 1>
+18:33:43.738859 IP 127.0.0.1.41760 > 127.0.0.1.3002: . ack 1 win 16396 <nop,nop,timestamp 634147 634147>
+18:33:43.740625 IP 127.0.0.1.41760 > 127.0.0.1.3002: P 1:8193(8192) ack 1 win 16396 <nop,nop,timestamp 634147 634147>
+18:33:43.740630 IP 127.0.0.1.3002 > 127.0.0.1.41760: . ack 8193 win 24576 <nop,nop,timestamp 634147 634147>
+18:33:43.740723 IP 127.0.0.1.41760 > 127.0.0.1.3002: P 8193:16385(8192) ack 1 win 16396 <nop,nop,timestamp 634147 634147>
+18:33:43.740726 IP 127.0.0.1.3002 > 127.0.0.1.41760: . ack 16385 win 24576 <nop,nop,timestamp 634147 634147>
+18:33:43.740839 IP 127.0.0.1.41760 > 127.0.0.1.3002: P 16385:24577(8192) ack 1 win 16396 <nop,nop,timestamp 634147 634147>
+18:33:43.740843 IP 127.0.0.1.3002 > 127.0.0.1.41760: . ack 24577 win 23120 <nop,nop,timestamp 634147 634147>
+18:33:43.740959 IP 127.0.0.1.41760 > 127.0.0.1.3002: P 24577:32769(8192) ack 1 win 16396 <nop,nop,timestamp 634147 634147>
+18:33:43.741173 IP 127.0.0.1.41760 > 127.0.0.1.3002: P 32769:49153(16384) ack 1 win 16396 <nop,nop,timestamp 634147 634147>
+18:33:43.741467 IP 127.0.0.1.41760 > 127.0.0.1.3002: P 49153:65537(16384) ack 1 win 16396 <nop,nop,timestamp 634147 634147>
+18:33:43.747256 IP 127.0.0.1.3002 > 127.0.0.1.41760: . ack 65537 win 2640 <nop,nop,timestamp 634153 634147>
+18:33:43.955862 IP 127.0.0.1.41760 > 127.0.0.1.3002: P 65537:70817(5280) ack 1 win 16396 <nop,nop,timestamp 634174 634153>
+18:33:43.955871 IP 127.0.0.1.3002 > 127.0.0.1.41760: . ack 70817 win 0 <nop,nop,timestamp 634174 634174>
+18:33:44.166017 IP 127.0.0.1.41760 > 127.0.0.1.3002: . ack 1 win 16396 <nop,nop,timestamp 634195 634174>
+18:33:44.166025 IP 127.0.0.1.3002 > 127.0.0.1.41760: . ack 70817 win 0 <nop,nop,timestamp 634195 634174>
+18:33:44.595875 IP 127.0.0.1.41760 > 127.0.0.1.3002: . ack 1 win 16396 <nop,nop,timestamp 634238 634195>
+18:33:44.595883 IP 127.0.0.1.3002 > 127.0.0.1.41760: . ack 70817 win 0 <nop,nop,timestamp 634238 634174>
+18:33:45.436568 IP 127.0.0.1.41760 > 127.0.0.1.3002: . ack 1 win 16396 <nop,nop,timestamp 634322 634238>
+18:33:45.436577 IP 127.0.0.1.3002 > 127.0.0.1.41760: . ack 70817 win 0 <nop,nop,timestamp 634322 634174>
+18:33:45.746870 IP 127.0.0.1.3002 > 127.0.0.1.41760: R 1:1(0) ack 70817 win 24576 <nop,nop,timestamp 634353 634174>
+\end{lstlisting}
+
+\section{Окно отправителя}
+
+На машине c5 установите задержку канала 100мс.
+
+\begin{lstlisting}
+*** c5/etc/delay configuration ***
+
+#!/bin/sh
+DELAY=100msec
+[[ -z $1 ]] || DELAY=${1}msec
+tc qdisc del dev eth0 root
+tc qdisc add dev eth0 root handle 1:0 netem delay $DELAY
+
+\end{lstlisting}
+
+На машине c2 запустите перехват пакетов
+\begin{lstlisting}
+c2:~# tcpdump -n -i eth0 tcp
+\end{lstlisting}
+
+На машине c1 запускаем ping. Видно, что время ответа узла 10.40.0.2 действительно составляет 100мс.
+\begin{lstlisting}
+c1:~# ping 10.40.0.2 
+PING 10.40.0.2 (10.40.0.2) 56(84) bytes of data.
+64 bytes from 10.40.0.2: icmp_seq=1 ttl=63 time=0.805 ms
+64 bytes from 10.40.0.2: icmp_seq=2 ttl=63 time=2.51 ms
+64 bytes from 10.40.0.2: icmp_seq=3 ttl=63 time=2.66 ms
+64 bytes from 10.40.0.2: icmp_seq=4 ttl=63 time=2.42 ms
+64 bytes from 10.40.0.2: icmp_seq=5 ttl=63 time=2.37 ms
+64 bytes from 10.40.0.2: icmp_seq=6 ttl=63 time=2.08 ms
+64 bytes from 10.40.0.2: icmp_seq=7 ttl=63 time=2.30 ms
+64 bytes from 10.40.0.2: icmp_seq=8 ttl=63 time=2.42 ms
+64 bytes from 10.40.0.2: icmp_seq=9 ttl=63 time=2.41 ms
+64 bytes from 10.40.0.2: icmp_seq=10 ttl=63 time=2.52 ms
+^C
+--- 10.40.0.2 ping statistics ---
+10 packets transmitted, 10 received, 0% packet loss, time 9094ms
+rtt min/avg/max/mdev = 0.805/2.252/2.667/0.504 ms
+\end{lstlisting}
+
+Затем выполняем на c1 следующие команды
+
+\begin{lstlisting}
+c1:~# gcc -std=c99 nagle.c      // Compiled
+-------------------------------------------------
+c1:~# ./a.out nodelay 10.40.0.2 9 1 20
+c2:~# tcpdump -n -i eth0 tcp
+03:23:34.334810 IP 10.10.0.2.51498 > 10.40.0.2.9: S 3963232507:3963232507(0) win 5840 <mss 1460,sackOK,timestamp 3813208 0,nop,wscale 1>
+03:23:34.446105 IP 10.40.0.2.9 > 10.10.0.2.51498: S 3975355572:3975355572(0) ack 3963232508 win 5792 <mss 1460,sackOK,timestamp 3813212 3813208,nop,wscale 1>
+03:23:34.446298 IP 10.10.0.2.51498 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 3813220 3813212>
+03:23:34.446371 IP 10.10.0.2.51498 > 10.40.0.2.9: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 3813220 3813212>
+03:23:34.455440 IP 10.10.0.2.51498 > 10.40.0.2.9: P 101:201(100) ack 1 win 2920 <nop,nop,timestamp 3813222 3813212>
+03:23:34.555261 IP 10.40.0.2.9 > 10.10.0.2.51498: . ack 101 win 2896 <nop,nop,timestamp 3813225 3813220>
+03:23:34.555549 IP 10.10.0.2.51498 > 10.40.0.2.9: P 201:1201(1000) ack 1 win 2920 <nop,nop,timestamp 3813231 3813225>
+03:23:34.563509 IP 10.10.0.2.51498 > 10.40.0.2.9: P 1201:1301(100) ack 1 win 2920 <nop,nop,timestamp 3813232 3813225>
+03:23:34.570216 IP 10.40.0.2.9 > 10.10.0.2.51498: . ack 201 win 2896 <nop,nop,timestamp 3813225 3813222>
+03:23:34.580259 IP 10.10.0.2.51498 > 10.40.0.2.9: P 1301:1401(100) ack 1 win 2920 <nop,nop,timestamp 3813234 3813225>
+03:23:34.582202 IP 10.10.0.2.51498 > 10.40.0.2.9: P 1401:1501(100) ack 1 win 2920 <nop,nop,timestamp 3813234 3813225>
+03:23:34.642928 IP 10.10.0.2.51498 > 10.40.0.2.9: FP 1501:2001(500) ack 1 win 2920 <nop,nop,timestamp 3813240 3813225>
+03:23:34.665505 IP 10.40.0.2.9 > 10.10.0.2.51498: . ack 1201 win 3896 <nop,nop,timestamp 3813235 3813231>
+03:23:34.665522 IP 10.40.0.2.9 > 10.10.0.2.51498: . ack 1301 win 3896 <nop,nop,timestamp 3813235 3813232>
+03:23:34.686384 IP 10.40.0.2.9 > 10.10.0.2.51498: . ack 1401 win 3896 <nop,nop,timestamp 3813238 3813234>
+03:23:34.692438 IP 10.40.0.2.9 > 10.10.0.2.51498: . ack 1501 win 3896 <nop,nop,timestamp 3813238 3813234>
+03:23:34.755754 IP 10.40.0.2.9 > 10.10.0.2.51498: F 1:1(0) ack 2002 win 4896 <nop,nop,timestamp 3813243 3813240>
+03:23:34.755865 IP 10.10.0.2.51498 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 3813252 3813243>
+
+-------------------------------------------------
+c1:~# ./a.out nodelay 10.40.0.2 9 1 50
+c2:~# tcpdump -n -i eth0 tcp
+03:24:28.024264 IP 10.10.0.2.51499 > 10.40.0.2.9: S 512060183:512060183(0) win 5840 <mss 1460,sackOK,timestamp 3818575 0,nop,wscale 1>
+03:24:28.135153 IP 10.40.0.2.9 > 10.10.0.2.51499: S 505953175:505953175(0) ack 512060184 win 5792 <mss 1460,sackOK,timestamp 3818581 3818575,nop,wscale 1>
+03:24:28.135362 IP 10.10.0.2.51499 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 3818589 3818581>
+03:24:28.135619 IP 10.10.0.2.51499 > 10.40.0.2.9: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 3818589 3818581>
+03:24:28.145683 IP 10.10.0.2.51499 > 10.40.0.2.9: P 101:201(100) ack 1 win 2920 <nop,nop,timestamp 3818591 3818581>
+03:24:28.156519 IP 10.10.0.2.51499 > 10.40.0.2.9: P 201:301(100) ack 1 win 2920 <nop,nop,timestamp 3818592 3818581>
+03:24:28.245585 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 101 win 2896 <nop,nop,timestamp 3818593 3818589>
+03:24:28.245745 IP 10.10.0.2.51499 > 10.40.0.2.9: P 301:1201(900) ack 1 win 2920 <nop,nop,timestamp 3818600 3818593>
+03:24:28.255504 IP 10.10.0.2.51499 > 10.40.0.2.9: P 1201:1301(100) ack 1 win 2920 <nop,nop,timestamp 3818602 3818593>
+03:24:28.255547 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 201 win 2896 <nop,nop,timestamp 3818593 3818591>
+03:24:28.262395 IP 10.10.0.2.51499 > 10.40.0.2.9: P 1301:1401(100) ack 1 win 2920 <nop,nop,timestamp 3818602 3818593>
+03:24:28.269220 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 301 win 2896 <nop,nop,timestamp 3818596 3818592>
+03:24:28.275441 IP 10.10.0.2.51499 > 10.40.0.2.9: P 1401:1501(100) ack 1 win 2920 <nop,nop,timestamp 3818604 3818596>
+03:24:28.285180 IP 10.10.0.2.51499 > 10.40.0.2.9: P 1501:1601(100) ack 1 win 2920 <nop,nop,timestamp 3818605 3818596>
+03:24:28.292965 IP 10.10.0.2.51499 > 10.40.0.2.9: P 1601:1701(100) ack 1 win 2920 <nop,nop,timestamp 3818605 3818596>
+03:24:28.355957 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 1201 win 3796 <nop,nop,timestamp 3818605 3818600>
+03:24:28.356079 IP 10.10.0.2.51499 > 10.40.0.2.9: P 1701:2301(600) ack 1 win 2920 <nop,nop,timestamp 3818611 3818605>
+03:24:28.362000 IP 10.10.0.2.51499 > 10.40.0.2.9: P 2301:2401(100) ack 1 win 2920 <nop,nop,timestamp 3818612 3818605>
+03:24:28.368904 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 1301 win 3796 <nop,nop,timestamp 3818606 3818602>
+03:24:28.368919 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 1401 win 3796 <nop,nop,timestamp 3818606 3818602>
+03:24:28.377669 IP 10.10.0.2.51499 > 10.40.0.2.9: P 2401:2501(100) ack 1 win 2920 <nop,nop,timestamp 3818614 3818606>
+03:24:28.377680 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 1501 win 3796 <nop,nop,timestamp 3818607 3818604>
+03:24:28.382539 IP 10.10.0.2.51499 > 10.40.0.2.9: P 2501:2601(100) ack 1 win 2920 <nop,nop,timestamp 3818614 3818607>
+03:24:28.391300 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 1601 win 3796 <nop,nop,timestamp 3818607 3818605>
+03:24:28.395479 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 1701 win 3796 <nop,nop,timestamp 3818609 3818605>
+03:24:28.404593 IP 10.10.0.2.51499 > 10.40.0.2.9: P 2601:2701(100) ack 1 win 2920 <nop,nop,timestamp 3818617 3818609>
+03:24:28.412517 IP 10.10.0.2.51499 > 10.40.0.2.9: P 2701:2801(100) ack 1 win 2920 <nop,nop,timestamp 3818617 3818609>
+03:24:28.422232 IP 10.10.0.2.51499 > 10.40.0.2.9: P 2801:2901(100) ack 1 win 2920 <nop,nop,timestamp 3818618 3818609>
+03:24:28.433891 IP 10.10.0.2.51499 > 10.40.0.2.9: P 2901:3001(100) ack 1 win 2920 <nop,nop,timestamp 3818619 3818609>
+03:24:28.442728 IP 10.10.0.2.51499 > 10.40.0.2.9: P 3001:3101(100) ack 1 win 2920 <nop,nop,timestamp 3818620 3818609>
+03:24:28.466021 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 2301 win 4696 <nop,nop,timestamp 3818616 3818611>
+03:24:28.466038 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 2401 win 4696 <nop,nop,timestamp 3818616 3818612>
+03:24:28.466138 IP 10.10.0.2.51499 > 10.40.0.2.9: P 3101:3201(100) ack 1 win 2920 <nop,nop,timestamp 3818623 3818616>
+03:24:28.474804 IP 10.10.0.2.51499 > 10.40.0.2.9: P 3201:3301(100) ack 1 win 2920 <nop,nop,timestamp 3818624 3818616>
+03:24:28.483749 IP 10.10.0.2.51499 > 10.40.0.2.9: P 3301:3401(100) ack 1 win 2920 <nop,nop,timestamp 3818624 3818616>
+03:24:28.488985 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 2501 win 4696 <nop,nop,timestamp 3818618 3818614>
+03:24:28.488996 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 2601 win 4696 <nop,nop,timestamp 3818618 3818614>
+03:24:28.492848 IP 10.10.0.2.51499 > 10.40.0.2.9: P 3401:3501(100) ack 1 win 2920 <nop,nop,timestamp 3818625 3818618>
+03:24:28.502119 IP 10.10.0.2.51499 > 10.40.0.2.9: P 3501:3601(100) ack 1 win 2920 <nop,nop,timestamp 3818626 3818618>
+03:24:28.507140 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 2701 win 4696 <nop,nop,timestamp 3818619 3818617>
+03:24:28.515787 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 2801 win 4696 <nop,nop,timestamp 3818621 3818617>
+03:24:28.515957 IP 10.10.0.2.51499 > 10.40.0.2.9: P 3601:3701(100) ack 1 win 2920 <nop,nop,timestamp 3818628 3818621>
+03:24:28.522099 IP 10.10.0.2.51499 > 10.40.0.2.9: P 3701:3801(100) ack 1 win 2920 <nop,nop,timestamp 3818628 3818621>
+03:24:28.529737 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 2901 win 4696 <nop,nop,timestamp 3818622 3818618>
+03:24:28.536620 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 3001 win 4696 <nop,nop,timestamp 3818623 3818619>
+03:24:28.536662 IP 10.10.0.2.51499 > 10.40.0.2.9: P 3801:3901(100) ack 1 win 2920 <nop,nop,timestamp 3818630 3818622>
+03:24:28.542509 IP 10.10.0.2.51499 > 10.40.0.2.9: P 3901:4001(100) ack 1 win 2920 <nop,nop,timestamp 3818630 3818623>
+03:24:28.551480 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 3101 win 4696 <nop,nop,timestamp 3818624 3818620>
+03:24:28.561538 IP 10.10.0.2.51499 > 10.40.0.2.9: P 4001:4101(100) ack 1 win 2920 <nop,nop,timestamp 3818632 3818624>
+03:24:28.572090 IP 10.10.0.2.51499 > 10.40.0.2.9: P 4101:4201(100) ack 1 win 2920 <nop,nop,timestamp 3818633 3818624>
+03:24:28.575989 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 3201 win 4696 <nop,nop,timestamp 3818627 3818623>
+03:24:28.576003 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 3301 win 4696 <nop,nop,timestamp 3818627 3818624>
+03:24:28.586784 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 3401 win 4696 <nop,nop,timestamp 3818628 3818624>
+03:24:28.587075 IP 10.10.0.2.51499 > 10.40.0.2.9: P 4201:4301(100) ack 1 win 2920 <nop,nop,timestamp 3818635 3818628>
+03:24:28.596476 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 3501 win 4696 <nop,nop,timestamp 3818629 3818625>
+03:24:28.596556 IP 10.10.0.2.51499 > 10.40.0.2.9: P 4301:4401(100) ack 1 win 2920 <nop,nop,timestamp 3818636 3818628>
+03:24:28.602620 IP 10.10.0.2.51499 > 10.40.0.2.9: P 4401:4501(100) ack 1 win 2920 <nop,nop,timestamp 3818636 3818629>
+03:24:28.612181 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 3601 win 4696 <nop,nop,timestamp 3818630 3818626>
+03:24:28.612247 IP 10.10.0.2.51499 > 10.40.0.2.9: P 4501:4601(100) ack 1 win 2920 <nop,nop,timestamp 3818637 3818629>
+03:24:28.623125 IP 10.10.0.2.51499 > 10.40.0.2.9: P 4601:4701(100) ack 1 win 2920 <nop,nop,timestamp 3818638 3818630>
+03:24:28.627760 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 3701 win 4696 <nop,nop,timestamp 3818632 3818628>
+03:24:28.627789 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 3801 win 4696 <nop,nop,timestamp 3818632 3818628>
+03:24:28.633989 IP 10.10.0.2.51499 > 10.40.0.2.9: P 4701:4801(100) ack 1 win 292    0 <nop,nop,timestamp 3818639 3818632>
+03:24:28.641810 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 3901 win 4696 <nop,nop,timestamp 3818634 3818630>
+03:24:28.641949 IP 10.10.0.2.51499 > 10.40.0.2.9: P 4801:4901(100) ack 1 win 2920 <nop,nop,timestamp 3818640 3818634>
+03:24:28.646025 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 4001 win 4696 <nop,nop,timestamp 3818634 3818630>
+03:24:28.657129 IP 10.10.0.2.51499 > 10.40.0.2.9: P 4901:5001(100) ack 1 win 2920 <nop,nop,timestamp 3818642 3818634>
+03:24:28.663565 IP 10.10.0.2.51499 > 10.40.0.2.9: F 5001:5001(0) ack 1 win 2920 <nop,nop,timestamp 3818642 3818634>
+
+*** here win add all ack ***
+03:24:28.668869 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 4101 win 4696 <nop,nop,timestamp 3818636 3818632>
+03:24:28.676596 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 4201 win 4696 <nop,nop,timestamp 3818637 3818633>
+03:24:28.696167 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 4301 win 4696 <nop,nop,timestamp 3818639 3818635>
+03:24:28.705149 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 4401 win 4696 <nop,nop,timestamp 3818640 3818636>
+03:24:28.705169 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 4501 win 4696 <nop,nop,timestamp 3818640 3818636>
+03:24:28.716869 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 4601 win 4696 <nop,nop,timestamp 3818641 3818637>
+03:24:28.726903 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 4701 win 4696 <nop,nop,timestamp 3818642 3818638>
+03:24:28.735574 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 4801 win 4696 <nop,nop,timestamp 3818643 3818639>
+03:24:28.747537 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 4901 win 4696 <nop,nop,timestamp 3818644 3818640>
+03:24:28.765883 IP 10.40.0.2.9 > 10.10.0.2.51499: . ack 5001 win 4696 <nop,nop,timestamp 3818646 3818642>
+03:24:28.775755 IP 10.40.0.2.9 > 10.10.0.2.51499: F 1:1(0) ack 5002 win 4696 <nop,nop,timestamp 3818646 3818642>
+03:24:28.775969 IP 10.10.0.2.51499 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 3818653 3818646>
+
+-------------------------------------------------
+c1:~# ./a.out nodelay 10.40.0.2 9 1 100
+c2:~# tcpdump -n -i eth0 tcp
+03:25:07.317404 IP 10.10.0.2.51500 > 10.40.0.2.9: S 1124405810:1124405810(0) win 5840 <mss 1460,sackOK,timestamp 3822506 0,nop,wscale 1>
+03:25:07.425604 IP 10.40.0.2.9 > 10.10.0.2.51500: S 1123052731:1123052731(0) ack 1124405811 win 5792 <mss 1460,sackOK,timestamp 3822511 3822506,nop,wscale 1>
+03:25:07.425794 IP 10.10.0.2.51500 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 3822518 3822511>
+03:25:07.425843 IP 10.10.0.2.51500 > 10.40.0.2.9: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 3822518 3822511>
+03:25:07.436365 IP 10.10.0.2.51500 > 10.40.0.2.9: P 101:201(100) ack 1 win 2920 <nop,nop,timestamp 3822520 3822511>
+03:25:07.443235 IP 10.10.0.2.51500 > 10.40.0.2.9: P 201:301(100) ack 1 win 2920 <nop,nop,timestamp 3822520 3822511>
+03:25:07.538481 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 101 win 2896 <nop,nop,timestamp 3822523 3822518>
+03:25:07.538512 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 201 win 2896 <nop,nop,timestamp 3822523 3822520>
+03:25:07.538784 IP 10.10.0.2.51500 > 10.40.0.2.9: P 301:1201(900) ack 1 win 2920 <nop,nop,timestamp 3822530 3822523>
+03:25:07.542321 IP 10.10.0.2.51500 > 10.40.0.2.9: P 1201:1301(100) ack 1 win 2920 <nop,nop,timestamp 3822530 3822523>
+03:25:07.551361 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 301 win 2896 <nop,nop,timestamp 3822523 3822520>
+03:25:07.569191 IP 10.10.0.2.51500 > 10.40.0.2.9: P 1301:1401(100) ack 1 win 2920 <nop,nop,timestamp 3822533 3822523>
+03:25:07.573125 IP 10.10.0.2.51500 > 10.40.0.2.9: P 1401:1501(100) ack 1 win 2920 <nop,nop,timestamp 3822533 3822523>
+03:25:07.582263 IP 10.10.0.2.51500 > 10.40.0.2.9: P 1501:1601(100) ack 1 win 2920 <nop,nop,timestamp 3822534 3822523>
+03:25:07.592837 IP 10.10.0.2.51500 > 10.40.0.2.9: P 1601:1701(100) ack 1 win 2920 <nop,nop,timestamp 3822535 3822523>
+03:25:07.645761 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 1201 win 3796 <nop,nop,timestamp 3822534 3822530>
+03:25:07.645780 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 1301 win 3796 <nop,nop,timestamp 3822534 3822530>
+03:25:07.645994 IP 10.10.0.2.51500 > 10.40.0.2.9: P 1701:2201(500) ack 1 win 2920 <nop,nop,timestamp 3822540 3822534>
+03:25:07.656193 IP 10.10.0.2.51500 > 10.40.0.2.9: P 2201:2301(100) ack 1 win 2920 <nop,nop,timestamp 3822542 3822534>
+03:25:07.664783 IP 10.10.0.2.51500 > 10.40.0.2.9: P 2301:2401(100) ack 1 win 2920 <nop,nop,timestamp 3822543 3822534>
+03:25:07.674471 IP 10.10.0.2.51500 > 10.40.0.2.9: P 2401:2501(100) ack 1 win 2920 <nop,nop,timestamp 3822544 3822534>
+03:25:07.683226 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 1401 win 3796 <nop,nop,timestamp 3822536 3822533>
+03:25:07.683246 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 1501 win 3796 <nop,nop,timestamp 3822536 3822533>
+03:25:07.683617 IP 10.10.0.2.51500 > 10.40.0.2.9: P 2501:2601(100) ack 1 win 2920 <nop,nop,timestamp 3822544 3822536>
+03:25:07.686102 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 1601 win 3796 <nop,nop,timestamp 3822536 3822534>
+03:25:07.695839 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 1701 win 3796 <nop,nop,timestamp 3822539 3822535>
+03:25:07.695893 IP 10.10.0.2.51500 > 10.40.0.2.9: P 2601:2701(100) ack 1 win 2920 <nop,nop,timestamp 3822546 3822536>
+03:25:07.702105 IP 10.10.0.2.51500 > 10.40.0.2.9: P 2701:2801(100) ack 1 win 2920 <nop,nop,timestamp 3822546 3822539>
+03:25:07.712821 IP 10.10.0.2.51500 > 10.40.0.2.9: P 2801:2901(100) ack 1 win 2920 <nop,nop,timestamp 3822547 3822539>
+03:25:07.722625 IP 10.10.0.2.51500 > 10.40.0.2.9: P 2901:3001(100) ack 1 win 2920 <nop,nop,timestamp 3822548 3822539>
+03:25:07.755673 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 2201 win 4696 <nop,nop,timestamp 3822545 3822540>
+03:25:07.755868 IP 10.10.0.2.51500 > 10.40.0.2.9: P 3001:3101(100) ack 1 win 2920 <nop,nop,timestamp 3822551 3822545>
+03:25:07.762703 IP 10.10.0.2.51500 > 10.40.0.2.9: P 3101:3201(100) ack 1 win 2920 <nop,nop,timestamp 3822552 3822545>
+03:25:07.769671 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 2301 win 4696 <nop,nop,timestamp 3822545 3822542>
+03:25:07.769697 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 2401 win 4696 <nop,nop,timestamp 3822545 3822543>
+03:25:07.774606 IP 10.10.0.2.51500 > 10.40.0.2.9: P 3201:3301(100) ack 1 win 2920 <nop,nop,timestamp 3822554 3822545>
+03:25:07.781475 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 2501 win 4696 <nop,nop,timestamp 3822547 3822544>
+03:25:07.787623 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 2601 win 4696 <nop,nop,timestamp 3822548 3822544>
+03:25:07.796651 IP 10.10.0.2.51500 > 10.40.0.2.9: P 3301:3401(100) ack 1 win 2920 <nop,nop,timestamp 3822556 3822548>
+03:25:07.802635 IP 10.10.0.2.51500 > 10.40.0.2.9: P 3401:3501(100) ack 1 win 2920 <nop,nop,timestamp 3822556 3822548>
+03:25:07.814565 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 2701 win 4696 <nop,nop,timestamp 3822550 3822546>
+03:25:07.814577 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 2801 win 4696 <nop,nop,timestamp 3822550 3822546>
+03:25:07.814588 IP 10.10.0.2.51500 > 10.40.0.2.9: P 3501:3601(100) ack 1 win 2920 <nop,nop,timestamp 3822558 3822548>
+03:25:07.814614 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 2901 win 4696 <nop,nop,timestamp 3822551 3822547>
+03:25:07.824285 IP 10.10.0.2.51500 > 10.40.0.2.9: P 3601:3701(100) ack 1 win 2920 <nop,nop,timestamp 3822559 3822551>
+03:25:07.829334 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 3001 win 4696 <nop,nop,timestamp 3822552 3822548>
+03:25:07.832191 IP 10.10.0.2.51500 > 10.40.0.2.9: P 3701:3801(100) ack 1 win 2920 <nop,nop,timestamp 3822559 3822552>
+03:25:07.842236 IP 10.10.0.2.51500 > 10.40.0.2.9: P 3801:3901(100) ack 1 win 2920 <nop,nop,timestamp 3822560 3822552>
+03:25:07.852349 IP 10.10.0.2.51500 > 10.40.0.2.9: P 3901:4001(100) ack 1 win 2920 <nop,nop,timestamp 3822561 3822552>
+03:25:07.858427 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 3101 win 4696 <nop,nop,timestamp 3822556 3822551>
+03:25:07.866183 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 3201 win 4696 <nop,nop,timestamp 3822556 3822552>
+03:25:07.866256 IP 10.10.0.2.51500 > 10.40.0.2.9: P 4001:4101(100) ack 1 win 2920 <nop,nop,timestamp 3822563 3822556>
+03:25:07.873157 IP 10.10.0.2.51500 > 10.40.0.2.9: P 4101:4201(100) ack 1 win 2920 <nop,nop,timestamp 3822563 3822556>
+03:25:07.882055 IP 10.10.0.2.51500 > 10.40.0.2.9: P 4201:4301(100) ack 1 win 2920 <nop,nop,timestamp 3822564 3822556>
+03:25:07.891757 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 3301 win 4696 <nop,nop,timestamp 3822557 3822554>
+03:25:07.897586 IP 10.10.0.2.51500 > 10.40.0.2.9: P 4301:4401(100) ack 1 win 2920 <nop,nop,timestamp 3822566 3822557>
+03:25:07.902429 IP 10.10.0.2.51500 > 10.40.0.2.9: P 4401:4501(100) ack 1 win 2920 <nop,nop,timestamp 3822566 3822557>
+03:25:07.908653 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 3401 win 4696 <nop,nop,timestamp 3822560 3822556>
+03:25:07.908674 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 3501 win 4696 <nop,nop,timestamp 3822560 3822556>
+03:25:07.915273 IP 10.10.0.2.51500 > 10.40.0.2.9: P 4501:4601(100) ack 1 win 2920 <nop,nop,timestamp 3822568 3822560>
+03:25:07.923254 IP 10.10.0.2.51500 > 10.40.0.2.9: P 4601:4701(100) ack 1 win 2920 <nop,nop,timestamp 3822568 3822560>
+03:25:07.929677 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 3601 win 4696 <nop,nop,timestamp 3822561 3822558>
+03:25:07.929685 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 3701 win 4696 <nop,nop,timestamp 3822561 3822559>
+03:25:07.933951 IP 10.10.0.2.51500 > 10.40.0.2.9: P 4701:4801(100) ack 1 win 2920 <nop,nop,timestamp 3822569 3822561>
+03:25:07.938641 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 3801 win 4696 <nop,nop,timestamp 3822563 3822559>
+03:25:07.945514 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 3901 win 4696 <nop,nop,timestamp 3822564 3822560>
+03:25:07.945592 IP 10.10.0.2.51500 > 10.40.0.2.9: P 4801:4901(100) ack 1 win 2920 <nop,nop,timestamp 3822571 3822563>
+03:25:07.952375 IP 10.10.0.2.51500 > 10.40.0.2.9: P 4901:5001(100) ack 1 win 2920 <nop,nop,timestamp 3822571 3822564>
+03:25:07.958716 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 4001 win 4696 <nop,nop,timestamp 3822565 3822561>
+03:25:07.965527 IP 10.10.0.2.51500 > 10.40.0.2.9: P 5001:5101(100) ack 1 win 2920 <nop,nop,timestamp 3822573 3822565>
+03:25:07.973326 IP 10.10.0.2.51500 > 10.40.0.2.9: P 5101:5201(100) ack 1 win 2920 <nop,nop,timestamp 3822573 3822565>
+03:25:07.979446 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 4101 win 4696 <nop,nop,timestamp 3822567 3822563>
+03:25:07.979460 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 4201 win 4696 <nop,nop,timestamp 3822567 3822563>
+03:25:07.986151 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 4301 win 4696 <nop,nop,timestamp 3822567 3822564>
+03:25:07.989930 IP 10.10.0.2.51500 > 10.40.0.2.9: P 5201:5301(100) ack 1 win 2920 <nop,nop,timestamp 3822575 3822567>
+03:25:07.993047 IP 10.10.0.2.51500 > 10.40.0.2.9: P 5301:5401(100) ack 1 win 2920 <nop,nop,timestamp 3822575 3822567>
+03:25:08.002197 IP 10.10.0.2.51500 > 10.40.0.2.9: P 5401:5501(100) ack 1 win 2920 <nop,nop,timestamp 3822576 3822567>
+03:25:08.010078 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 4401 win 4696 <nop,nop,timestamp 3822570 3822566>
+03:25:08.010093 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 4501 win 4696 <nop,nop,timestamp 3822570 3822566>
+03:25:08.016151 IP 10.10.0.2.51500 > 10.40.0.2.9: P 5501:5601(100) ack 1 win 2920 <nop,nop,timestamp 3822578 3822570>
+03:25:08.022068 IP 10.10.0.2.51500 > 10.40.0.2.9: P 5601:5701(100) ack 1 win 2920 <nop,nop,timestamp 3822578 3822570>
+03:25:08.028021 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 4601 win 4696 <nop,nop,timestamp 3822571 3822568>
+03:25:08.028034 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 4701 win 4696 <nop,nop,timestamp 3822571 3822568>
+03:25:08.035962 IP 10.10.0.2.51500 > 10.40.0.2.9: P 5701:5801(100) ack 1 win 2920 <nop,nop,timestamp 3822580 3822571>
+03:25:08.042166 IP 10.10.0.2.51500 > 10.40.0.2.9: P 5801:5901(100) ack 1 win 2920 <nop,nop,timestamp 3822580 3822571>
+03:25:08.050529 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 4801 win 4696 <nop,nop,timestamp 3822573 3822569>
+03:25:08.050543 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 4901 win 4696 <nop,nop,timestamp 3822575 3822571>
+03:25:08.055490 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 5001 win 4696 <nop,nop,timestamp 3822575 3822571>
+03:25:08.055529 IP 10.10.0.2.51500 > 10.40.0.2.9: P 5901:6001(100) ack 1 win 2920 <nop,nop,timestamp 3822582 3822575>
+03:25:08.062098 IP 10.10.0.2.51500 > 10.40.0.2.9: P 6001:6101(100) ack 1 win 2920 <nop,nop,timestamp 3822582 3822575>
+03:25:08.069298 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 5101 win 4696 <nop,nop,timestamp 3822577 3822573>
+03:25:08.077154 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 5201 win 4696 <nop,nop,timestamp 3822577 3822573>
+03:25:08.077238 IP 10.10.0.2.51500 > 10.40.0.2.9: P 6101:6201(100) ack 1 win 2920 <nop,nop,timestamp 3822584 3822577>
+03:25:08.082835 IP 10.10.0.2.51500 > 10.40.0.2.9: P 6201:6301(100) ack 1 win 2920 <nop,nop,timestamp 3822584 3822577>
+03:25:08.094638 IP 10.10.0.2.51500 > 10.40.0.2.9: P 6301:6401(100) ack 1 win 2920 <nop,nop,timestamp 3822586 3822577>
+03:25:08.099561 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 5301 win 4696 <nop,nop,timestamp 3822579 3822575>
+03:25:08.099580 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 5401 win 4696 <nop,nop,timestamp 3822579 3822575>
+03:25:08.107312 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 5501 win 4696 <nop,nop,timestamp 3822580 3822576>
+03:25:08.107566 IP 10.10.0.2.51500 > 10.40.0.2.9: P 6401:6501(100) ack 1 win 2920 <nop,nop,timestamp 3822587 3822580>
+03:25:08.112155 IP 10.10.0.2.51500 > 10.40.0.2.9: P 6501:6601(100) ack 1 win 2920 <nop,nop,timestamp 3822587 3822580>
+03:25:08.121194 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 5601 win 4696 <nop,nop,timestamp 3822582 3822578>
+03:25:08.126160 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 5701 win 4696 <nop,nop,timestamp 3822582 3822578>
+03:25:08.126355 IP 10.10.0.2.51500 > 10.40.0.2.9: P 6601:6701(100) ack 1 win 2920 <nop,nop,timestamp 3822589 3822582>
+03:25:08.132344 IP 10.10.0.2.51500 > 10.40.0.2.9: P 6701:6801(100) ack 1 win 2920 <nop,nop,timestamp 3822589 3822582>
+03:25:08.142022 IP 10.10.0.2.51500 > 10.40.0.2.9: P 6801:6901(100) ack 1 win 2920 <nop,nop,timestamp 3822590 3822582>
+03:25:08.147826 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 5801 win 4696 <nop,nop,timestamp 3822583 3822580>
+03:25:08.147840 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 5901 win 4696 <nop,nop,timestamp 3822583 3822580>
+03:25:08.156651 IP 10.10.0.2.51500 > 10.40.0.2.9: P 6901:7001(100) ack 1 win 2920 <nop,nop,timestamp 3822592 3822583>
+03:25:08.162760 IP 10.10.0.2.51500 > 10.40.0.2.9: P 7001:7101(100) ack 1 win 2920 <nop,nop,timestamp 3822592 3822583>
+03:25:08.170435 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 6001 win 4696 <nop,nop,timestamp 3822586 3822582>
+03:25:08.170447 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 6101 win 4696 <nop,nop,timestamp 3822586 3822582>
+03:25:08.175073 IP 10.10.0.2.51500 > 10.40.0.2.9: P 7101:7201(100) ack 1 win 2920 <nop,nop,timestamp 3822594 3822586>
+03:25:08.183085 IP 10.10.0.2.51500 > 10.40.0.2.9: P 7201:7301(100) ack 1 win 2920 <nop,nop,timestamp 3822594 3822586>
+03:25:08.192239 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 6201 win 4696 <nop,nop,timestamp 3822588 3822584>
+03:25:08.192251 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 6301 win 4696 <nop,nop,timestamp 3822588 3822584>
+03:25:08.192430 IP 10.10.0.2.51500 > 10.40.0.2.9: P 7301:7401(100) ack 1 win 2920 <nop,nop,timestamp 3822595 3822588>
+03:25:08.197051 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 6401 win 4696 <nop,nop,timestamp 3822589 3822586>
+03:25:08.205606 IP 10.10.0.2.51500 > 10.40.0.2.9: P 7401:7501(100) ack 1 win 2920 <nop,nop,timestamp 3822597 3822589>
+03:25:08.214731 IP 10.10.0.2.51500 > 10.40.0.2.9: P 7501:7601(100) ack 1 win 2920 <nop,nop,timestamp 3822598 3822589>
+03:25:08.219472 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 6501 win 4696 <nop,nop,timestamp 3822591 3822587>
+03:25:08.219503 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 6601 win 4696 <nop,nop,timestamp 3822591 3822587>
+03:25:08.227536 IP 10.10.0.2.51500 > 10.40.0.2.9: P 7601:7701(100) ack 1 win 2920 <nop,nop,timestamp 3822599 3822591>
+03:25:08.233490 IP 10.10.0.2.51500 > 10.40.0.2.9: P 7701:7801(100) ack 1 win 2920 <nop,nop,timestamp 3822599 3822591>
+03:25:08.237318 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 6701 win 4696 <nop,nop,timestamp 3822593 3822589>
+03:25:08.237328 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 6801 win 4696 <nop,nop,timestamp 3822593 3822589>
+03:25:08.246038 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 6901 win 4696 <nop,nop,timestamp 3822594 3822590>
+03:25:08.246251 IP 10.10.0.2.51500 > 10.40.0.2.9: P 7801:7901(100) ack 1 win 2920 <nop,nop,timestamp 3822601 3822594>
+03:25:08.252173 IP 10.10.0.2.51500 > 10.40.0.2.9: P 7901:8001(100) ack 1 win 2920 <nop,nop,timestamp 3822601 3822594>
+03:25:08.262864 IP 10.10.0.2.51500 > 10.40.0.2.9: P 8001:8101(100) ack 1 win 2920 <nop,nop,timestamp 3822602 3822594>
+03:25:08.268081 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 7001 win 4696 <nop,nop,timestamp 3822596 3822592>
+03:25:08.268093 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 7101 win 4696 <nop,nop,timestamp 3822596 3822592>
+03:25:08.274461 IP 10.10.0.2.51500 > 10.40.0.2.9: P 8101:8201(100) ack 1 win 2920 <nop,nop,timestamp 3822604 3822596>
+03:25:08.278349 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 7201 win 4696 <nop,nop,timestamp 3822597 3822594>
+03:25:08.282280 IP 10.10.0.2.51500 > 10.40.0.2.9: P 8201:8301(100) ack 1 win 2920 <nop,nop,timestamp 3822604 3822597>
+03:25:08.288072 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 7301 win 4696 <nop,nop,timestamp 3822597 3822594>
+03:25:08.295951 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 7401 win 4696 <nop,nop,timestamp 3822599 3822595>
+03:25:08.296118 IP 10.10.0.2.51500 > 10.40.0.2.9: P 8301:8401(100) ack 1 win 2920 <nop,nop,timestamp 3822606 3822599>
+03:25:08.302273 IP 10.10.0.2.51500 > 10.40.0.2.9: P 8401:8501(100) ack 1 win 2920 <nop,nop,timestamp 3822606 3822599>
+03:25:08.314761 IP 10.10.0.2.51500 > 10.40.0.2.9: P 8501:8601(100) ack 1 win 2920 <nop,nop,timestamp 3822608 3822599>
+03:25:08.315863 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 7501 win 4696 <nop,nop,timestamp 3822601 3822597>
+03:25:08.315876 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 7601 win 4696 <nop,nop,timestamp 3822601 3822598>
+03:25:08.322059 IP 10.10.0.2.51500 > 10.40.0.2.9: P 8601:8701(100) ack 1 win 2920 <nop,nop,timestamp 3822608 3822601>
+03:25:08.332241 IP 10.10.0.2.51500 > 10.40.0.2.9: P 8701:8801(100) ack 1 win 2920 <nop,nop,timestamp 3822609 3822601>
+03:25:08.336153 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 7701 win 4696 <nop,nop,timestamp 3822603 3822599>
+03:25:08.336167 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 7801 win 4696 <nop,nop,timestamp 3822603 3822599>
+03:25:08.345858 IP 10.10.0.2.51500 > 10.40.0.2.9: P 8801:8901(100) ack 1 win 2920 <nop,nop,timestamp 3822611 3822603>
+03:25:08.352723 IP 10.10.0.2.51500 > 10.40.0.2.9: P 8901:9001(100) ack 1 win 2920 <nop,nop,timestamp 3822611 3822603>
+03:25:08.362793 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 7901 win 4696 <nop,nop,timestamp 3822605 3822601>
+03:25:08.362801 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 8001 win 4696 <nop,nop,timestamp 3822605 3822601>
+03:25:08.362827 IP 10.10.0.2.51500 > 10.40.0.2.9: P 9001:9101(100) ack 1 win 2920 <nop,nop,timestamp 3822612 3822603>
+03:25:08.365668 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 8101 win 4696 <nop,nop,timestamp 3822606 3822602>
+03:25:08.374724 IP 10.10.0.2.51500 > 10.40.0.2.9: P 9101:9201(100) ack 1 win 2920 <nop,nop,timestamp 3822614 3822606>
+03:25:08.376771 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 8201 win 4696 <nop,nop,timestamp 3822607 3822604>
+03:25:08.382757 IP 10.10.0.2.51500 > 10.40.0.2.9: P 9201:9301(100) ack 1 win 2920 <nop,nop,timestamp 3822614 3822607>
+03:25:08.386401 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 8301 win 4696 <nop,nop,timestamp 3822608 3822604>
+03:25:08.394328 IP 10.10.0.2.51500 > 10.40.0.2.9: P 9301:9401(100) ack 1 win 2920 <nop,nop,timestamp 3822616 3822608>
+03:25:08.399219 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 8401 win 4696 <nop,nop,timestamp 3822610 3822606>
+03:25:08.402673 IP 10.10.0.2.51500 > 10.40.0.2.9: P 9401:9501(100) ack 1 win 2920 <nop,nop,timestamp 3822616 3822610>
+03:25:08.408983 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 8501 win 4696 <nop,nop,timestamp 3822610 3822606>
+03:25:08.414753 IP 10.10.0.2.51500 > 10.40.0.2.9: P 9501:9601(100) ack 1 win 2920 <nop,nop,timestamp 3822618 3822610>
+03:25:08.416726 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 8601 win 4696 <nop,nop,timestamp 3822611 3822608>
+03:25:08.422862 IP 10.10.0.2.51500 > 10.40.0.2.9: P 9601:9701(100) ack 1 win 2920 <nop,nop,timestamp 3822618 3822611>
+03:25:08.426657 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 8701 win 4696 <nop,nop,timestamp 3822612 3822608>
+03:25:08.434659 IP 10.10.0.2.51500 > 10.40.0.2.9: P 9701:9801(100) ack 1 win 2920 <nop,nop,timestamp 3822620 3822612>
+03:25:08.440466 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 8801 win 4696 <nop,nop,timestamp 3822613 3822609>
+03:25:08.449589 IP 10.10.0.2.51500 > 10.40.0.2.9: P 9801:9901(100) ack 1 win 2920 <nop,nop,timestamp 3822621 3822613>
+03:25:08.452341 IP 10.10.0.2.51500 > 10.40.0.2.9: P 9901:10001(100) ack 1 win 2920 <nop,nop,timestamp 3822621 3822613>
+03:25:08.464680 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 8901 win 4696 <nop,nop,timestamp 3822615 3822611>
+03:25:08.464702 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 9001 win 4696 <nop,nop,timestamp 3822615 3822611>
+03:25:08.464738 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 9101 win 4696 <nop,nop,timestamp 3822616 3822612>
+03:25:08.465276 IP 10.10.0.2.51500 > 10.40.0.2.9: F 10001:10001(0) ack 1 win 2920 <nop,nop,timestamp 3822623 3822616>
+
+03:25:08.477534 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 9201 win 4696 <nop,nop,timestamp 3822617 3822614>
+03:25:08.486375 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 9301 win 4696 <nop,nop,timestamp 3822618 3822614>
+03:25:08.496114 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 9401 win 4696 <nop,nop,timestamp 3822619 3822616>
+03:25:08.507004 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 9501 win 4696 <nop,nop,timestamp 3822620 3822616>
+03:25:08.525172 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 9601 win 4696 <nop,nop,timestamp 3822621 3822618>
+03:25:08.525188 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 9701 win 4696 <nop,nop,timestamp 3822622 3822618>
+03:25:08.545656 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 9801 win 4696 <nop,nop,timestamp 3822623 3822620>
+03:25:08.556821 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 9901 win 4696 <nop,nop,timestamp 3822624 3822621>
+03:25:08.556836 IP 10.40.0.2.9 > 10.10.0.2.51500: . ack 10001 win 4696 <nop,nop,timestamp 3822624 3822621>
+03:25:08.575313 IP 10.40.0.2.9 > 10.10.0.2.51500: F 1:1(0) ack 10002 win 4696 <nop,nop,timestamp 3822626 3822623>
+03:25:08.575525 IP 10.10.0.2.51500 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 3822633 3822626>
+
+-------------------------------------------------
+*** Send again 100 packets from c1 to c5 (where delay change to 500) ***
+c1:~# ./a.out nodelay 10.40.0.2 9 1 100
+
+c2:~# tcpdump -n -i eth0 tcp
+10:04:05.729527 IP 10.10.0.2.58727 > 10.40.0.2.9: S 3379034691:3379034691(0) win 5840 <mss 1460,sackOK,timestamp 899279 0,nop,wscale 1>
+10:04:06.231412 IP 10.40.0.2.9 > 10.10.0.2.58727: S 3386098651:3386098651(0) ack 3379034692 win 5792 <mss 1460,sackOK,timestamp 899280 899279,nop,wscale 1>
+10:04:06.231986 IP 10.10.0.2.58727 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 899331 899280>
+10:04:06.232187 IP 10.10.0.2.58727 > 10.40.0.2.9: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 899331 899280>
+10:04:06.242131 IP 10.10.0.2.58727 > 10.40.0.2.9: P 101:201(100) ack 1 win 2920 <nop,nop,timestamp 899333 899280>
+10:04:06.741120 IP 10.40.0.2.9 > 10.10.0.2.58727: . ack 101 win 2896 <nop,nop,timestamp 899331 899331>
+10:04:06.741423 IP 10.10.0.2.58727 > 10.40.0.2.9: . 201:1649(1448) ack 1 win 2920 <nop,nop,timestamp 899382 899331>
+10:04:06.741455 IP 10.10.0.2.58727 > 10.40.0.2.9: . 1649:3097(1448) ack 1 win 2920 <nop,nop,timestamp 899382 899331>
+10:04:06.752019 IP 10.40.0.2.9 > 10.10.0.2.58727: . ack 201 win 2896 <nop,nop,timestamp 899331 899333>
+10:04:06.752342 IP 10.10.0.2.58727 > 10.40.0.2.9: . 3097:4545(1448) ack 1 win 2920 <nop,nop,timestamp 899384 899331>
+10:04:06.752365 IP 10.10.0.2.58727 > 10.40.0.2.9: P 4545:5301(756) ack 1 win 2920 <nop,nop,timestamp 899384 899331>
+10:04:07.251127 IP 10.40.0.2.9 > 10.10.0.2.58727: . ack 1649 win 4344 <nop,nop,timestamp 899382 899382>
+10:04:07.251162 IP 10.40.0.2.9 > 10.10.0.2.58727: . ack 3097 win 5792 <nop,nop,timestamp 899382 899382>
+10:04:07.251482 IP 10.10.0.2.58727 > 10.40.0.2.9: . 5301:6749(1448) ack 1 win 2920 <nop,nop,timestamp 899433 899382>
+10:04:07.251507 IP 10.10.0.2.58727 > 10.40.0.2.9: . 6749:8197(1448) ack 1 win 2920 <nop,nop,timestamp 899433 899382>
+10:04:07.251518 IP 10.10.0.2.58727 > 10.40.0.2.9: . 8197:9645(1448) ack 1 win 2920 <nop,nop,timestamp 899433 899382>
+10:04:07.251526 IP 10.10.0.2.58727 > 10.40.0.2.9: FP 9645:10001(356) ack 1 win 2920 <nop,nop,timestamp 899433 899382>
+10:04:07.265877 IP 10.40.0.2.9 > 10.10.0.2.58727: . ack 4545 win 7240 <nop,nop,timestamp 899384 899384>
+10:04:07.265907 IP 10.40.0.2.9 > 10.10.0.2.58727: . ack 5301 win 8688 <nop,nop,timestamp 899384 899384>
+10:04:07.761101 IP 10.40.0.2.9 > 10.10.0.2.58727: . ack 6749 win 10136 <nop,nop,timestamp 899433 899433>
+10:04:07.761126 IP 10.40.0.2.9 > 10.10.0.2.58727: . ack 8197 win 11584 <nop,nop,timestamp 899433 899433>
+10:04:07.761137 IP 10.40.0.2.9 > 10.10.0.2.58727: . ack 9645 win 13032 <nop,nop,timestamp 899433 899433>
+10:04:07.761150 IP 10.40.0.2.9 > 10.10.0.2.58727: F 1:1(0) ack 10002 win 13032 <nop,nop,timestamp 899433 899433>
+10:04:07.761487 IP 10.10.0.2.58727 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 899484 899433>
+\end{lstlisting}
+
+\section{Нейгл и Мишналь}
+
+Замечание:
+\begin{lstlisting}
+./a.out default 10.40.0.2 9 0 30
+if delay arg[4] < 0  : not delay
+if delay arg[4] == 0 : delay 1 ms
+if delay arg[4] > 0  : delay in ms
+\end{lstlisting}
+
+0) !Delay -1: (без задержки)
+\begin{lstlisting}
+c1:~# ./a.out default 10.40.0.2 9 -1 30
+
+c2:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+13:40:50.183134 IP 10.10.0.2.34974 > 10.40.0.2.9: S 676853454:676853454(0) win 5840 <mss 1460,sackOK,timestamp 4294963786 0,nop,wscale 1>
+13:40:50.292950 IP 10.40.0.2.9 > 10.10.0.2.34974: S 687349237:687349237(0) ack 676853455 win 5792 <mss 1460,sackOK,timestamp 4294963794 4294963786,nop,wscale 1>
+13:40:50.293561 IP 10.10.0.2.34974 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 4294963799 4294963794>
+13:40:50.293923 IP 10.10.0.2.34974 > 10.40.0.2.9: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 4294963799 4294963794>
+13:40:50.294482 IP 10.10.0.2.34974 > 10.40.0.2.9: . 101:1549(1448) ack 1 win 2920 <nop,nop,timestamp 4294963799 4294963794>
+13:40:50.402990 IP 10.40.0.2.9 > 10.10.0.2.34974: . ack 101 win 2896 <nop,nop,timestamp 4294963805 4294963799>  // small ack + long message (nagle mode)
+13:40:50.403020 IP 10.40.0.2.9 > 10.10.0.2.34974: . ack 1549 win 4344 <nop,nop,timestamp 4294963805 4294963799>
+
+13:40:50.403409 IP 10.10.0.2.34974 > 10.40.0.2.9: . 1549:2997(1448) ack 1 win 2920 <nop,nop,timestamp 4294963810 4294963805>
+13:40:50.403442 IP 10.10.0.2.34974 > 10.40.0.2.9: FP 2997:3001(4) ack 1 win 2920 <nop,nop,timestamp 4294963810 4294963805>
+
+13:40:50.512956 IP 10.40.0.2.9 > 10.10.0.2.34974: . ack 2997 win 5792 <nop,nop,timestamp 4294963816 4294963810>
+13:40:50.513066 IP 10.40.0.2.9 > 10.10.0.2.34974: F 1:1(0) ack 3002 win 5792 <nop,nop,timestamp 4294963816 4294963810>
+13:40:50.513507 IP 10.10.0.2.34974 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 4294963821 4294963816>
+\end{lstlisting}
+
+1) !Delay 0: почти без задержки, алгоритм Нейгла работает
+\begin{lstlisting}
+c1:~# ./a.out default 10.40.0.2 9 0 30
+
+c2:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+14:04:48.386853 IP 10.10.0.2.56839 > 10.40.0.2.3: S 1770183362:1770183362(0) win 5840 <mss 1460,sackOK,timestamp 140311 0,nop,wscale 1>
+14:04:48.605256 IP 10.40.0.2.3 > 10.10.0.2.56839: R 0:0(0) ack 1770183363 win 0
+14:05:11.118796 IP 10.10.0.2.45075 > 10.40.0.2.0: S 2117141362:2117141362(0) win 5840 <mss 1460,sackOK,timestamp 142585 0,nop,wscale 1>
+14:05:11.222865 IP 10.40.0.2.0 > 10.10.0.2.45075: R 0:0(0) ack 2117141363 win 0
+14:05:54.490131 IP 10.10.0.2.59768 > 10.40.0.2.9: S 2800009834:2800009834(0) win 5840 <mss 1460,sackOK,timestamp 146922 0,nop,wscale 1>
+14:05:54.598165 IP 10.40.0.2.9 > 10.10.0.2.59768: S 2799427887:2799427887(0) ack 2800009835 win 5792 <mss 1460,sackOK,timestamp 146928 146922,nop,wscale 1>
+14:05:54.599255 IP 10.10.0.2.59768 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 146932 146928>
+14:05:54.600191 IP 10.10.0.2.59768 > 10.40.0.2.9: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 146932 146928>
+14:05:54.604308 IP 10.10.0.2.59768 > 10.40.0.2.9: . 101:1549(1448) ack 1 win 2920 <nop,nop,timestamp 146934 146928>
+14:05:54.702642 IP 10.40.0.2.9 > 10.10.0.2.59768: . ack 101 win 2896 <nop,nop,timestamp 146940 146932>
+14:05:54.702876 IP 10.10.0.2.59768 > 10.40.0.2.9: . 1549:2997(1448) ack 1 win 2920 <nop,nop,timestamp 146944 146940> // small ack on only message 101: MICHAEL (by neigle)
+14:05:54.702885 IP 10.10.0.2.59768 > 10.40.0.2.9: FP 2997:3001(4) ack 1 win 2920 <nop,nop,timestamp 146944 146940>
+14:05:54.716896 IP 10.40.0.2.9 > 10.10.0.2.59768: . ack 1549 win 4344 <nop,nop,timestamp 146940 146934>
+14:05:54.803922 IP 10.40.0.2.9 > 10.10.0.2.59768: . ack 2997 win 5792 <nop,nop,timestamp 146950 146944> // big ack on x2 seg 1549 and 2997 and 3002 
+14:05:54.821069 IP 10.40.0.2.9 > 10.10.0.2.59768: F 1:1(0) ack 3002 win 5792 <nop,nop,timestamp 146950 146944>
+14:05:54.821570 IP 10.10.0.2.59768 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 146955 146950>
+\end{lstlisting}
+
+2) Маленькая задержка, алгоритм Нейгла работает частично
+\begin{lstlisting}
+c1:~# ./a.out default 10.40.0.2 9 3 30
+
+c2:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+14:07:06.244635 IP 10.10.0.2.41993 > 10.40.0.2.9: S 3937533497:3937533497(0) win 5840 <mss 1460,sackOK,timestamp 154097 0,nop,wscale 1>
+14:07:06.358059 IP 10.40.0.2.9 > 10.10.0.2.41993: S 3927348088:3927348088(0) ack 3937533498 win 5792 <mss 1460,sackOK,timestamp 154104 154097,nop,wscale 1>
+14:07:06.358972 IP 10.10.0.2.41993 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 154109 154104>
+14:07:06.359295 IP 10.10.0.2.41993 > 10.40.0.2.9: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 154109 154104>
+14:07:06.463271 IP 10.40.0.2.9 > 10.10.0.2.41993: . ack 101 win 2896 <nop,nop,timestamp 154116 154109>
+14:07:06.463514 IP 10.10.0.2.41993 > 10.40.0.2.9: P 101:1101(1000) ack 1 win 2920 <nop,nop,timestamp 154120 154116>
+14:07:06.573103 IP 10.40.0.2.9 > 10.10.0.2.41993: . ack 1101 win 3896 <nop,nop,timestamp 154126 154120>
+14:07:06.573767 IP 10.10.0.2.41993 > 10.40.0.2.9: P 1101:2201(1100) ack 1 win 2920 <nop,nop,timestamp 154131 154126> // often send big seg and the last small message
+14:07:06.661892 IP 10.10.0.2.41993 > 10.40.0.2.9: FP 2201:3001(800) ack 1 win 2920 <nop,nop,timestamp 154140 154126>
+14:07:06.696538 IP 10.40.0.2.9 > 10.10.0.2.41993: . ack 2201 win 4996 <nop,nop,timestamp 154137 154131>
+14:07:06.792978 IP 10.40.0.2.9 > 10.10.0.2.41993: F 1:1(0) ack 3002 win 6096 <nop,nop,timestamp 154145 154140>
+14:07:06.793408 IP 10.10.0.2.41993 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 154152 154145>
+\end{lstlisting}
+
+
+\section{Аггрессивная буферизация}
+Send packets from c1 to c5. Tcpdump is called in c2. Delay time: from low to high.
+
+\begin{lstlisting}
+c1:~# ./a.out cork 10.40.0.2 9 -1 20
+
+c2:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+19:37:31.302701 IP (tos 0x0, ttl 64, id 63644, offset 0, flags [DF], proto TCP (6), length 60) 10.10.0.2.38638 > 10.40.0.2.discard: S, cksum 0xc725 (correct), 3218994066:3218994066(0) win 5840 <mss 1460,sackOK,timestamp 6621966 0,nop,wscale 1>
+19:37:31.349603 IP (tos 0x0, ttl 63, id 0, offset 0, flags [DF], proto TCP (6), length 60) 10.40.0.2.discard > 10.10.0.2.38638: S, cksum 0xaf09 (correct), 3218689250:3218689250(0) ack 3218994067 win 5792 <mss 1460,sackOK,timestamp 6621978 6621966,nop,wscale 1>
+19:37:31.350111 IP (tos 0x0, ttl 64, id 63645, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.38638 > 10.40.0.2.discard: ., cksum 0xe8fb (correct), ack 1 win 2920 <nop,nop,timestamp 6621978 6621978>
+19:37:31.352020 IP (tos 0x0, ttl 64, id 63646, offset 0, flags [DF], proto TCP (6), length 1500) 10.10.0.2.38638 > 10.40.0.2.discard: . 1:1449(1448) ack 1 win 2920 <nop,nop,timestamp 6621978 6621978>
+19:37:31.352263 IP (tos 0x0, ttl 63, id 18425, offset 0, flags [DF], proto TCP (6), length 52) 10.40.0.2.discard > 10.10.0.2.38638: ., cksum 0xddc3 (correct), ack 1449 win 4344 <nop,nop,timestamp 6621978 6621978>
+19:37:31.353813 IP (tos 0x0, ttl 64, id 63647, offset 0, flags [DF], proto TCP (6), length 604) 10.10.0.2.38638 > 10.40.0.2.discard: FP 1449:2001(552) ack 1 win 2920 <nop,nop,timestamp 6621978 6621978>
+19:37:31.375701 IP (tos 0x0, ttl 63, id 18426, offset 0, flags [DF], proto TCP (6), length 52) 10.40.0.2.discard > 10.10.0.2.38638: F, cksum 0xd5f1 (correct), 1:1(0) ack 2002 win 5792 <nop,nop,timestamp 6621978 6621978>
+19:37:31.375917 IP (tos 0x0, ttl 64, id 63648, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.38638 > 10.40.0.2.discard: ., cksum 0xe126 (correct), ack 2 win 2920 <nop,nop,timestamp 6621981 6621978>
+
+----------------------------------
+c1:~# ./a.out cork 10.40.0.2 9 0 30
+
+c2:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+19:46:39.689094 IP 10.10.0.2.43372 > 10.40.0.2.9: S 2496862348:2496862348(0) win 5840 <mss 1460,sackOK,timestamp 391441 0,nop,wscale 1>
+19:46:39.909809 IP 10.40.0.2.9 > 10.10.0.2.43372: S 2496588949:2496588949(0) ack 2496862349 win 5792 <mss 1460,sackOK,timestamp 391448 391441,nop,wscale 1>
+19:46:39.910617 IP 10.10.0.2.43372 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 391464 391448>
+19:46:39.925375 IP 10.10.0.2.43372 > 10.40.0.2.9: . 1:1449(1448) ack 1 win 2920 <nop,nop,timestamp 391466 391448>
+19:46:39.925493 IP 10.10.0.2.43372 > 10.40.0.2.9: . 1449:2897(1448) ack 1 win 2920 <nop,nop,timestamp 391466 391448>
+19:46:39.925758 IP 10.10.0.2.43372 > 10.40.0.2.9: FP 2897:3001(104) ack 1 win 2920 <nop,nop,timestamp 391466 391448>
+19:46:40.035824 IP 10.40.0.2.9 > 10.10.0.2.43372: . ack 1449 win 4344 <nop,nop,timestamp 391473 391466>
+19:46:40.035859 IP 10.40.0.2.9 > 10.10.0.2.43372: . ack 2897 win 5792 <nop,nop,timestamp 391473 391466>
+19:46:40.043998 IP 10.40.0.2.9 > 10.10.0.2.43372: F 1:1(0) ack 3002 win 5792 <nop,nop,timestamp 391473 391466>
+19:46:40.044130 IP 10.10.0.2.43372 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 391478 391473>
+
+----------------------------------
+c1:~# ./a.out cork 10.40.0.2 9 100 30
+
+c2:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+20:03:29.640199 IP 10.10.0.2.38005 > 10.40.0.2.9: S 1144680713:1144680713(0) win 5840 <mss 1460,sackOK,timestamp 492435 0,nop,wscale 1>
+20:03:29.862870 IP 10.40.0.2.9 > 10.10.0.2.38005: S 1148900800:1148900800(0) ack 1144680714 win 5792 <mss 1460,sackOK,timestamp 492443 492435,nop,wscale 1>
+20:03:29.864368 IP 10.10.0.2.38005 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 492460 492443>
+20:03:30.611706 IP 10.10.0.2.38005 > 10.40.0.2.9: P 1:701(700) ack 1 win 2920 <nop,nop,timestamp 492535 492443>
+20:03:30.713055 IP 10.40.0.2.9 > 10.10.0.2.38005: . ack 701 win 3596 <nop,nop,timestamp 492540 492535>
+20:03:31.450447 IP 10.10.0.2.38005 > 10.40.0.2.9: P 701:1501(800) ack 1 win 2920 <nop,nop,timestamp 492618 492540>
+20:03:31.553145 IP 10.40.0.2.9 > 10.10.0.2.38005: . ack 1501 win 4396 <nop,nop,timestamp 492624 492618>
+20:03:32.251124 IP 10.10.0.2.38005 > 10.40.0.2.9: P 1501:2201(700) ack 1 win 2920 <nop,nop,timestamp 492699 492624>
+20:03:32.353465 IP 10.40.0.2.9 > 10.10.0.2.38005: . ack 2201 win 5196 <nop,nop,timestamp 492704 492699>
+20:03:33.061721 IP 10.10.0.2.38005 > 10.40.0.2.9: P 2201:3001(800) ack 1 win 2920 <nop,nop,timestamp 492780 492704>
+20:03:33.130390 IP 10.10.0.2.38005 > 10.40.0.2.9: F 3001:3001(0) ack 1 win 2920 <nop,nop,timestamp 492786 492704>
+20:03:33.162867 IP 10.40.0.2.9 > 10.10.0.2.38005: . ack 3001 win 5996 <nop,nop,timestamp 492785 492780>
+20:03:33.232949 IP 10.40.0.2.9 > 10.10.0.2.38005: F 1:1(0) ack 3002 win 5996 <nop,nop,timestamp 492792 492786>
+20:03:33.233100 IP 10.10.0.2.38005 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 492796 492792>
+
+-----------------------------------
+c1:~# ./a.out cork 10.40.0.2 9 300 30
+
+c2:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+20:07:35.465751 IP 10.10.0.2.56890 > 10.40.0.2.9: S 751791755:751791755(0) win 5840 <mss 1460,sackOK,timestamp 353019 0,nop,wscale 1>
+20:07:35.693459 IP 10.40.0.2.9 > 10.10.0.2.56890: S 753386792:753386792(0) ack 751791756 win 5792 <mss 1460,sackOK,timestamp 353038 353019,nop,wscale 1>
+20:07:35.694013 IP 10.10.0.2.56890 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 353043 353038>
+20:07:36.411289 IP 10.10.0.2.56890 > 10.40.0.2.9: P 1:201(200) ack 1 win 2920 <nop,nop,timestamp 353115 353038>
+20:07:36.512992 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 201 win 3432 <nop,nop,timestamp 353120 353115>
+20:07:37.220824 IP 10.10.0.2.56890 > 10.40.0.2.9: P 201:401(200) ack 1 win 2920 <nop,nop,timestamp 353195 353120>
+20:07:37.322867 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 401 win 3968 <nop,nop,timestamp 353202 353195>
+20:07:38.011337 IP 10.10.0.2.56890 > 10.40.0.2.9: P 401:601(200) ack 1 win 2920 <nop,nop,timestamp 353275 353202>
+20:07:38.113270 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 601 win 4504 <nop,nop,timestamp 353280 353275>
+20:07:38.812490 IP 10.10.0.2.56890 > 10.40.0.2.9: P 601:801(200) ack 1 win 2920 <nop,nop,timestamp 353355 353280>
+20:07:38.913404 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 801 win 4504 <nop,nop,timestamp 353361 353355>
+20:07:39.621009 IP 10.10.0.2.56890 > 10.40.0.2.9: P 801:1001(200) ack 1 win 2920 <nop,nop,timestamp 353436 353361>
+20:07:39.722914 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 1001 win 4504 <nop,nop,timestamp 353441 353436>
+20:07:40.415421 IP 10.10.0.2.56890 > 10.40.0.2.9: P 1001:1201(200) ack 1 win 2920 <nop,nop,timestamp 353515 353441>
+20:07:40.527512 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 1201 win 4504 <nop,nop,timestamp 353522 353515>
+20:07:41.184975 IP 10.10.0.2.56890 > 10.40.0.2.9: P 1201:1401(200) ack 1 win 2920 <nop,nop,timestamp 353592 353522>
+20:07:41.292901 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 1401 win 4504 <nop,nop,timestamp 353599 353592>
+20:07:41.960742 IP 10.10.0.2.56890 > 10.40.0.2.9: P 1401:1601(200) ack 1 win 2920 <nop,nop,timestamp 353670 353599>
+20:07:42.064040 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 1601 win 4504 <nop,nop,timestamp 353675 353670>
+20:07:42.762616 IP 10.10.0.2.56890 > 10.40.0.2.9: P 1601:1801(200) ack 1 win 2920 <nop,nop,timestamp 353750 353675>
+20:07:42.863310 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 1801 win 4504 <nop,nop,timestamp 353756 353750>
+20:07:43.540939 IP 10.10.0.2.56890 > 10.40.0.2.9: P 1801:2001(200) ack 1 win 2920 <nop,nop,timestamp 353828 353756>
+20:07:43.643171 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 2001 win 4504 <nop,nop,timestamp 353833 353828>
+20:07:44.330775 IP 10.10.0.2.56890 > 10.40.0.2.9: P 2001:2201(200) ack 1 win 2920 <nop,nop,timestamp 353906 353833>
+20:07:44.432660 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 2201 win 4504 <nop,nop,timestamp 353912 353906>
+20:07:45.112205 IP 10.10.0.2.56890 > 10.40.0.2.9: P 2201:2401(200) ack 1 win 2920 <nop,nop,timestamp 353985 353912>
+20:07:45.226529 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 2401 win 4504 <nop,nop,timestamp 353991 353985>
+20:07:45.882052 IP 10.10.0.2.56890 > 10.40.0.2.9: P 2401:2601(200) ack 1 win 2920 <nop,nop,timestamp 354062 353991>
+20:07:45.983019 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 2601 win 4504 <nop,nop,timestamp 354068 354062>
+20:07:46.672604 IP 10.10.0.2.56890 > 10.40.0.2.9: P 2601:2801(200) ack 1 win 2920 <nop,nop,timestamp 354141 354068>
+20:07:46.782688 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 2801 win 4504 <nop,nop,timestamp 354147 354141>
+20:07:47.461088 IP 10.10.0.2.56890 > 10.40.0.2.9: P 2801:2901(100) ack 1 win 2920 <nop,nop,timestamp 354220 354147>
+20:07:47.563993 IP 10.40.0.2.9 > 10.10.0.2.56890: . ack 2901 win 4504 <nop,nop,timestamp 354225 354220>
+20:07:47.887541 IP 10.10.0.2.56890 > 10.40.0.2.9: FP 2901:3001(100) ack 1 win 2920 <nop,nop,timestamp 354262 354225>
+20:07:47.993656 IP 10.40.0.2.9 > 10.10.0.2.56890: F 1:1(0) ack 3002 win 4504 <nop,nop,timestamp 354269 354262>
+20:07:47.993874 IP 10.10.0.2.56890 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 354273 354269>
+\end{lstlisting}
+
+\section{Отправка без задержки}
+Увидим, что nodelay не помогает, когда окно отправителя полное.
+
+\begin{lstlisting}
+c1:~# ./a.out nodelay 10.40.0.2 9 0 30
+14:49:53.826418 IP 10.10.0.2.43373 > 10.40.0.2.9: S 1236424592:1236424592(0) win 5840 <mss 1460,sackOK,timestamp 410856 0,nop,wscale 1>
+14:49:53.940039 IP 10.40.0.2.9 > 10.10.0.2.43373: S 1232752628:1232752628(0) ack 1236424593 win 5792 <mss 1460,sackOK,timestamp 410862 410856,nop,wscale 1>
+14:49:53.940770 IP 10.10.0.2.43373 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 410866 410862>
+14:49:53.940796 IP 10.10.0.2.43373 > 10.40.0.2.9: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 410866 410862>
+14:49:53.951012 IP 10.10.0.2.43373 > 10.40.0.2.9: P 101:201(100) ack 1 win 2920 <nop,nop,timestamp 410869 410862>
+14:49:53.951062 IP 10.10.0.2.43373 > 10.40.0.2.9: P 201:301(100) ack 1 win 2920 <nop,nop,timestamp 410869 410862>
+14:49:54.042704 IP 10.40.0.2.9 > 10.10.0.2.43373: . ack 101 win 2896 <nop,nop,timestamp 410873 410866>
+14:49:54.042848 IP 10.10.0.2.43373 > 10.40.0.2.9: . 301:1749(1448) ack 1 win 2920 <nop,nop,timestamp 410878 410873>
+14:49:54.042858 IP 10.10.0.2.43373 > 10.40.0.2.9: FP 1749:3001(1252) ack 1 win 2920 <nop,nop,timestamp 410878 410873>
+14:49:54.073009 IP 10.40.0.2.9 > 10.10.0.2.43373: . ack 201 win 2896 <nop,nop,timestamp 410873 410869>
+14:49:54.073057 IP 10.40.0.2.9 > 10.10.0.2.43373: . ack 301 win 2896 <nop,nop,timestamp 410873 410869>
+14:49:54.152784 IP 10.40.0.2.9 > 10.10.0.2.43373: . ack 1749 win 4344 <nop,nop,timestamp 410884 410878>
+14:49:54.152839 IP 10.40.0.2.9 > 10.10.0.2.43373: F 1:1(0) ack 3002 win 5792 <nop,nop,timestamp 410884 410878>
+14:49:54.153086 IP 10.10.0.2.43373 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 410888 410884>
+
+-------------------------------------------------
+c1:~# ./a.out nodelay 10.40.0.2 9 -1 30
+14:56:11.684864 IP 10.10.0.2.45131 > 10.40.0.2.9: S 2869980403:2869980403(0) win 5840 <mss 1460,sackOK,timestamp 448639 0,nop,wscale 1>
+14:56:11.912894 IP 10.40.0.2.9 > 10.10.0.2.45131: S 2857072455:2857072455(0) ack 2869980404 win 5792 <mss 1460,sackOK,timestamp 448661 448639,nop,wscale 1>
+14:56:11.913432 IP 10.10.0.2.45131 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 448665 448661>
+14:56:11.914756 IP 10.10.0.2.45131 > 10.40.0.2.9: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 448665 448661>
+14:56:11.914800 IP 10.10.0.2.45131 > 10.40.0.2.9: P 101:201(100) ack 1 win 2920 <nop,nop,timestamp 448665 448661>
+14:56:12.023089 IP 10.40.0.2.9 > 10.10.0.2.45131: . ack 101 win 2896 <nop,nop,timestamp 448671 448665>
+14:56:12.023111 IP 10.40.0.2.9 > 10.10.0.2.45131: . ack 201 win 2896 <nop,nop,timestamp 448671 448665>  
+14:56:12.023559 IP 10.10.0.2.45131 > 10.40.0.2.9: . 201:1649(1448) ack 1 win 2920 <nop,nop,timestamp 448676 448671>
+14:56:12.023577 IP 10.10.0.2.45131 > 10.40.0.2.9: FP 1649:3001(1352) ack 1 win 2920 <nop,nop,timestamp 448676 448671>
+14:56:12.133445 IP 10.40.0.2.9 > 10.10.0.2.45131: . ack 1649 win 4344 <nop,nop,timestamp 448682 448676>
+14:56:12.133484 IP 10.40.0.2.9 > 10.10.0.2.45131: F 1:1(0) ack 3002 win 5792 <nop,nop,timestamp 448682 448676>
+14:56:12.134153 IP 10.10.0.2.45131 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 448687 448682>
+
+-------------------------------------------------
+c1:~# ./a.out nodelay 10.40.0.2 9 10 30
+14:58:24.460285 IP 10.10.0.2.48836 > 10.40.0.2.9: S 653923370:653923370(0) win 5840 <mss 1460,sackOK,timestamp 461919 0,nop,wscale 1>
+14:58:24.565057 IP 10.40.0.2.9 > 10.10.0.2.48836: S 651686885:651686885(0) ack 653923371 win 5792 <mss 1460,sackOK,timestamp 461925 461919,nop,wscale 1>
+14:58:24.565282 IP 10.10.0.2.48836 > 10.40.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 461930 461925>
+14:58:24.565452 IP 10.10.0.2.48836 > 10.40.0.2.9: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 461930 461925>
+14:58:24.580629 IP 10.10.0.2.48836 > 10.40.0.2.9: P 101:201(100) ack 1 win 2920 <nop,nop,timestamp 461931 461925>
+14:58:24.600540 IP 10.10.0.2.48836 > 10.40.0.2.9: P 201:301(100) ack 1 win 2920 <nop,nop,timestamp 461933 461925>
+14:58:24.675724 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 101 win 2896 <nop,nop,timestamp 461937 461930> 
+14:58:24.675948 IP 10.10.0.2.48836 > 10.40.0.2.9: P 301:901(600) ack 1 win 2920 <nop,nop,timestamp 461941 461937>
+14:58:24.683304 IP 10.10.0.2.48836 > 10.40.0.2.9: P 901:1001(100) ack 1 win 2920 <nop,nop,timestamp 461942 461937>
+14:58:24.683321 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 201 win 2896 <nop,nop,timestamp 461938 461931>
+14:58:24.700972 IP 10.10.0.2.48836 > 10.40.0.2.9: P 1001:1101(100) ack 1 win 2920 <nop,nop,timestamp 461944 461938>
+14:58:24.710499 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 301 win 2896 <nop,nop,timestamp 461939 461933>
+14:58:24.725668 IP 10.10.0.2.48836 > 10.40.0.2.9: P 1101:1201(100) ack 1 win 2920 <nop,nop,timestamp 461946 461939>
+14:58:24.740759 IP 10.10.0.2.48836 > 10.40.0.2.9: P 1201:1301(100) ack 1 win 2920 <nop,nop,timestamp 461947 461939>
+14:58:24.752430 IP 10.10.0.2.48836 > 10.40.0.2.9: P 1301:1401(100) ack 1 win 2920 <nop,nop,timestamp 461949 461939>
+14:58:24.786711 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 901 win 3496 <nop,nop,timestamp 461948 461941>
+14:58:24.786752 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 1001 win 3496 <nop,nop,timestamp 461948 461942>
+14:58:24.787348 IP 10.10.0.2.48836 > 10.40.0.2.9: P 1401:1501(100) ack 1 win 2920 <nop,nop,timestamp 461951 461948>
+14:58:24.795493 IP 10.10.0.2.48836 > 10.40.0.2.9: P 1501:1601(100) ack 1 win 2920 <nop,nop,timestamp 461953 461948>
+14:58:24.805542 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 1101 win 3496 <nop,nop,timestamp 461949 461944>
+14:58:24.814272 IP 10.10.0.2.48836 > 10.40.0.2.9: P 1601:1701(100) ack 1 win 2920 <nop,nop,timestamp 461955 461949>
+14:58:24.832933 IP 10.10.0.2.48836 > 10.40.0.2.9: P 1701:1801(100) ack 1 win 2920 <nop,nop,timestamp 461957 461949>
+14:58:24.832975 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 1201 win 3496 <nop,nop,timestamp 461953 461946>
+14:58:24.843590 IP 10.10.0.2.48836 > 10.40.0.2.9: P 1801:1901(100) ack 1 win 2920 <nop,nop,timestamp 461958 461953>
+14:58:24.843863 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 1301 win 3496 <nop,nop,timestamp 461954 461947>
+14:58:24.853950 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 1401 win 3496 <nop,nop,timestamp 461955 461949>
+14:58:24.864271 IP 10.10.0.2.48836 > 10.40.0.2.9: P 1901:2001(100) ack 1 win 2920 <nop,nop,timestamp 461960 461955>
+14:58:24.884832 IP 10.10.0.2.48836 > 10.40.0.2.9: P 2001:2101(100) ack 1 win 2920 <nop,nop,timestamp 461962 461955>
+14:58:24.892745 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 1501 win 3496 <nop,nop,timestamp 461959 461951>
+14:58:24.902693 IP 10.10.0.2.48836 > 10.40.0.2.9: P 2101:2201(100) ack 1 win 2920 <nop,nop,timestamp 461964 461959>
+14:58:24.903000 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 1601 win 3496 <nop,nop,timestamp 461960 461953>
+14:58:24.922693 IP 10.10.0.2.48836 > 10.40.0.2.9: P 2201:2301(100) ack 1 win 2920 <nop,nop,timestamp 461966 461960>
+14:58:24.922790 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 1701 win 3496 <nop,nop,timestamp 461961 461955>
+14:58:24.934398 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 1801 win 3496 <nop,nop,timestamp 461963 461957>
+14:58:24.944429 IP 10.10.0.2.48836 > 10.40.0.2.9: P 2301:2401(100) ack 1 win 2920 <nop,nop,timestamp 461968 461963>
+14:58:24.954898 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 1901 win 3496 <nop,nop,timestamp 461964 461958>
+14:58:24.968623 IP 10.10.0.2.48836 > 10.40.0.2.9: P 2401:2501(100) ack 1 win 2920 <nop,nop,timestamp 461970 461964>
+14:58:24.976906 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 2001 win 3496 <nop,nop,timestamp 461966 461960>
+14:58:24.987310 IP 10.10.0.2.48836 > 10.40.0.2.9: P 2501:2601(100) ack 1 win 2920 <nop,nop,timestamp 461972 461966>
+14:58:24.998573 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 2101 win 3496 <nop,nop,timestamp 461969 461962>
+14:58:25.001298 IP 10.10.0.2.48836 > 10.40.0.2.9: P 2601:2701(100) ack 1 win 2920 <nop,nop,timestamp 461974 461969>
+14:58:25.009514 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 2201 win 3496 <nop,nop,timestamp 461970 461964>
+14:58:25.016235 IP 10.10.0.2.48836 > 10.40.0.2.9: P 2701:2801(100) ack 1 win 2920 <nop,nop,timestamp 461975 461970>
+14:58:25.024064 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 2301 win 3496 <nop,nop,timestamp 461972 461966>
+14:58:25.032907 IP 10.10.0.2.48836 > 10.40.0.2.9: P 2801:2901(100) ack 1 win 2920 <nop,nop,timestamp 461977 461972>
+14:58:25.052957 IP 10.10.0.2.48836 > 10.40.0.2.9: P 2901:3001(100) ack 1 win 2920 <nop,nop,timestamp 461979 461972>
+14:58:25.053172 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 2401 win 3496 <nop,nop,timestamp 461974 461968>
+14:58:25.071840 IP 10.10.0.2.48836 > 10.40.0.2.9: F 3001:3001(0) ack 1 win 2920 <nop,nop,timestamp 461981 461974>
+14:58:25.079340 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 2501 win 3496 <nop,nop,timestamp 461976 461970>
+14:58:25.093076 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 2601 win 3496 <nop,nop,timestamp 461978 461972>
+14:58:25.104297 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 2701 win 3496 <nop,nop,timestamp 461980 461974>
+14:58:25.123094 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 2801 win 3496 <nop,nop,timestamp 461981 461975>
+14:58:25.145035 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 2901 win 3496 <nop,nop,timestamp 461983 461977>
+14:58:25.162990 IP 10.40.0.2.9 > 10.10.0.2.48836: . ack 3001 win 3496 <nop,nop,timestamp 461985 461979>
+14:58:25.183863 IP 10.40.0.2.9 > 10.10.0.2.48836: F 1:1(0) ack 3002 win 3496 <nop,nop,timestamp 461987 461981>
+14:58:25.184121 IP 10.10.0.2.48836 > 10.40.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 461992 461987>
+\end{lstlisting}
+
+\section{Быстрый повтор}
+Отправка пакет из с1 в с4, при установки имитации потери 11-го пакета в с3
+\begin{lstlisting}
+c3:~# /etc/drop 11
+I will drop every 11 packet (counting from 1).
+\end{lstlisting}
+
+Результат быстрого повтора
+\begin{lstlisting}
+c1:~# ./a.out nodelay 10.30.0.2 9 1 20
+
+c2:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+20:59:48.807214 IP (tos 0x0, ttl 64, id 45381, offset 0, flags [DF], proto TCP (6), length 60) 10.10.0.2.55898 > 10.30.0.2.discard: S, cksum 0xda6b (correct), 2868164421:2868164421(0) win 5840 <mss 1460,sackOK,timestamp 67072 0,nop,wscale 1>
+20:59:51.739182 IP (tos 0x0, ttl 64, id 45382, offset 0, flags [DF], proto TCP (6), length 60) 10.10.0.2.55898 > 10.30.0.2.discard: S, cksum 0xd93f (correct), 2868164421:2868164421(0) win 5840 <mss 1460,sackOK,timestamp 67372 0,nop,wscale 1>
+20:59:51.741548 IP (tos 0x0, ttl 62, id 0, offset 0, flags [DF], proto TCP (6), length 60) 10.30.0.2.discard > 10.10.0.2.55898: S, cksum 0xbb27 (correct), 2909502378:2909502378(0) ack 2868164422 win 2096 <mss 536,sackOK,timestamp 67372 67372,nop,wscale 1>
+20:59:51.742464 IP (tos 0x0, ttl 64, id 45383, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.55898 > 10.30.0.2.discard: ., cksum 0xe319 (correct), ack 1 win 2920 <nop,nop,timestamp 67372 67372>
+20:59:51.744786 IP (tos 0x0, ttl 64, id 45384, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 67372 67372>
+20:59:51.747984 IP (tos 0x0, ttl 62, id 31879, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xea05 (correct), ack 101 win 1048 <nop,nop,timestamp 67372 67372>
+20:59:51.759917 IP (tos 0x0, ttl 64, id 45385, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 101:201(100) ack 1 win 2920 <nop,nop,timestamp 67374 67372>
+20:59:51.767448 IP (tos 0x0, ttl 62, id 31880, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe99f (correct), ack 201 win 1048 <nop,nop,timestamp 67372 67374>
+20:59:51.777512 IP (tos 0x0, ttl 64, id 45386, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 201:301(100) ack 1 win 2920 <nop,nop,timestamp 67375 67372>
+20:59:51.779059 IP (tos 0x0, ttl 64, id 45387, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 301:401(100) ack 1 win 2920 <nop,nop,timestamp 67376 67372>
+20:59:51.788871 IP (tos 0x0, ttl 64, id 45388, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 401:501(100) ack 1 win 2920 <nop,nop,timestamp 67377 67372>
+20:59:51.799066 IP (tos 0x0, ttl 64, id 45389, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 501:601(100) ack 1 win 2920 <nop,nop,timestamp 67378 67372>
+20:59:51.801305 IP (tos 0x0, ttl 62, id 31881, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe872 (correct), ack 501 win 1048 <nop,nop,timestamp 67372 67375>
+20:59:51.811336 IP (tos 0x0, ttl 64, id 45390, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 601:701(100) ack 1 win 2920 <nop,nop,timestamp 67379 67372>
+
+20:59:51.811901 IP (tos 0x0, ttl 62, id 31882, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe8d0 (correct), ack 501 win 1048 <nop,nop,timestamp 67372 67375,nop,nop,sack 1 {601:701}>
+20:59:51.818762 IP (tos 0x0, ttl 64, id 45391, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 701:801(100) ack 1 win 2920 <nop,nop,timestamp 67380 67372>
+20:59:51.819413 IP (tos 0x0, ttl 62, id 31883, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe86c (correct), ack 501 win 1048 <nop,nop,timestamp 67372 67375,nop,nop,sack 1 {601:801}>
+20:59:51.829947 IP (tos 0x0, ttl 64, id 45392, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 801:901(100) ack 1 win 2920 <nop,nop,timestamp 67381 67372>
+20:59:51.831479 IP (tos 0x0, ttl 62, id 31884, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe7ff (correct), ack 501 win 1048 <nop,nop,timestamp 67381 67375,nop,nop,sack 1 {601:901}>
+20:59:51.832039 IP (tos 0x0, ttl 64, id 45393, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 501:601(100) ack 1 win 2920 <nop,nop,timestamp 67381 67381>
+20:59:51.833045 IP (tos 0x0, ttl 62, id 31885, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe6d3 (correct), ack 901 win 1048 <nop,nop,timestamp 67381 67381>
+
+20:59:51.843000 IP (tos 0x0, ttl 64, id 45394, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 901:1001(100) ack 1 win 2920 <nop,nop,timestamp 67382 67381>
+20:59:52.049022 IP (tos 0x0, ttl 64, id 45395, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 901:1001(100) ack 1 win 2920 <nop,nop,timestamp 67403 67381>
+20:59:52.050885 IP (tos 0x0, ttl 62, id 31887, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe449 (correct), ack 1001 win 1048 <nop,nop,timestamp 67403 67403,nop,nop,sack 1 {901:1001}>
+
+20:59:52.051636 IP (tos 0x0, ttl 64, id 45396, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.55898 > 10.30.0.2.discard: . 1001:1525(524) ack 1 win 2920 <nop,nop,timestamp 67403 67403>
+20:59:52.051985 IP (tos 0x0, ttl 64, id 45397, offset 0, flags [DF], proto TCP (6), length 528) 10.10.0.2.55898 > 10.30.0.2.discard: FP 1525:2001(476) ack 1 win 2920 <nop,nop,timestamp 67403 67403>
+20:59:52.052958 IP (tos 0x0, ttl 62, id 31888, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe22b (correct), ack 1525 win 1572 <nop,nop,timestamp 67403 67403>
+20:59:52.077612 IP (tos 0x0, ttl 62, id 31889, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.55898: F, cksum 0xde41 (correct), 1:1(0) ack 2002 win 2096 <nop,nop,timestamp 67403 67403>
+20:59:52.078039 IP (tos 0x0, ttl 64, id 45398, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.55898 > 10.30.0.2.discard: ., cksum 0xdb08 (correct), ack 2 win 2920 <nop,nop,timestamp 67404 67403>
+
+c3:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+20:59:48.785969 IP (tos 0x0, ttl 63, id 45381, offset 0, flags [DF], proto TCP (6), length 60) 10.10.0.2.55898 > 10.30.0.2.discard: S, cksum 0xda6b (correct), 2868164421:2868164421(0) win 5840 <mss 1460,sackOK,timestamp 67072 0,nop,wscale 1>
+20:59:51.718299 IP (tos 0x0, ttl 63, id 45382, offset 0, flags [DF], proto TCP (6), length 60) 10.10.0.2.55898 > 10.30.0.2.discard: S, cksum 0xd93f (correct), 2868164421:2868164421(0) win 5840 <mss 1460,sackOK,timestamp 67372 0,nop,wscale 1>
+20:59:51.719532 IP (tos 0x0, ttl 63, id 0, offset 0, flags [DF], proto TCP (6), length 60) 10.30.0.2.discard > 10.10.0.2.55898: S, cksum 0xbb27 (correct), 2909502378:2909502378(0) ack 2868164422 win 2096 <mss 536,sackOK,timestamp 67372 67372,nop,wscale 1>
+20:59:51.721431 IP (tos 0x0, ttl 63, id 45383, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.55898 > 10.30.0.2.discard: ., cksum 0xe319 (correct), ack 1 win 2920 <nop,nop,timestamp 67372 67372>
+20:59:51.723686 IP (tos 0x0, ttl 63, id 45384, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 67372 67372>
+20:59:51.726059 IP (tos 0x0, ttl 63, id 31879, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xea05 (correct), ack 101 win 1048 <nop,nop,timestamp 67372 67372>
+20:59:51.739914 IP (tos 0x0, ttl 63, id 45385, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 101:201(100) ack 1 win 2920 <nop,nop,timestamp 67374 67372>
+20:59:51.745547 IP (tos 0x0, ttl 63, id 31880, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe99f (correct), ack 201 win 1048 <nop,nop,timestamp 67372 67374>
+20:59:51.756699 IP (tos 0x0, ttl 63, id 45386, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 201:301(100) ack 1 win 2920 <nop,nop,timestamp 67375 67372>
+20:59:51.757962 IP (tos 0x0, ttl 63, id 45387, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 301:401(100) ack 1 win 2920 <nop,nop,timestamp 67376 67372>
+20:59:51.767654 IP (tos 0x0, ttl 63, id 45388, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 401:501(100) ack 1 win 2920 <nop,nop,timestamp 67377 67372>
+20:59:51.778124 IP (tos 0x0, ttl 63, id 45389, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 501:601(100) ack 1 win 2920 <nop,nop,timestamp 67378 67372>
+20:59:51.779712 IP (tos 0x0, ttl 63, id 31881, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe872 (correct), ack 501 win 1048 <nop,nop,timestamp 67372 67375>
+20:59:51.790044 IP (tos 0x0, ttl 63, id 45390, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 601:701(100) ack 1 win 2920 <nop,nop,timestamp 67379 67372>
+
+20:59:51.790300 IP (tos 0x0, ttl 63, id 31882, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe8d0 (correct), ack 501 win 1048 <nop,nop,timestamp 67372 67375,nop,nop,sack 1 {601:701}>
+20:59:51.797451 IP (tos 0x0, ttl 63, id 45391, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 701:801(100) ack 1 win 2920 <nop,nop,timestamp 67380 67372>
+20:59:51.797812 IP (tos 0x0, ttl 63, id 31883, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe86c (correct), ack 501 win 1048 <nop,nop,timestamp 67372 67375,nop,nop,sack 1 {601:801}>
+20:59:51.808943 IP (tos 0x0, ttl 63, id 45392, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 801:901(100) ack 1 win 2920 <nop,nop,timestamp 67381 67372>
+20:59:51.809782 IP (tos 0x0, ttl 63, id 31884, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe7ff (correct), ack 501 win 1048 <nop,nop,timestamp 67381 67375,nop,nop,sack 1 {601:901}>
+20:59:51.810864 IP (tos 0x0, ttl 63, id 45393, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 501:601(100) ack 1 win 2920 <nop,nop,timestamp 67381 67381>
+20:59:51.811420 IP (tos 0x0, ttl 63, id 31885, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe6d3 (correct), ack 901 win 1048 <nop,nop,timestamp 67381 67381>
+
+20:59:51.821970 IP (tos 0x0, ttl 63, id 45394, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 901:1001(100) ack 1 win 2920 <nop,nop,timestamp 67382 67381>
+20:59:52.028125 IP (tos 0x0, ttl 63, id 45395, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.55898 > 10.30.0.2.discard: P 901:1001(100) ack 1 win 2920 <nop,nop,timestamp 67403 67381>
+20:59:52.029042 IP (tos 0x0, ttl 63, id 31887, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe449 (correct), ack 1001 win 1048 <nop,nop,timestamp 67403 67403,nop,nop,sack 1 {901:1001}>
+
+20:59:52.030576 IP (tos 0x0, ttl 63, id 45396, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.55898 > 10.30.0.2.discard: . 1001:1525(524) ack 1 win 2920 <nop,nop,timestamp 67403 67403>
+20:59:52.030899 IP (tos 0x0, ttl 63, id 45397, offset 0, flags [DF], proto TCP (6), length 528) 10.10.0.2.55898 > 10.30.0.2.discard: FP 1525:2001(476) ack 1 win 2920 <nop,nop,timestamp 67403 67403>
+20:59:52.031126 IP (tos 0x0, ttl 63, id 31888, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.55898: ., cksum 0xe22b (correct), ack 1525 win 1572 <nop,nop,timestamp 67403 67403>
+20:59:52.055660 IP (tos 0x0, ttl 63, id 31889, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.55898: F, cksum 0xde41 (correct), 1:1(0) ack 2002 win 2096 <nop,nop,timestamp 67403 67403>
+20:59:52.056873 IP (tos 0x0, ttl 63, id 45398, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.55898 > 10.30.0.2.discard: ., cksum 0xdb08 (correct), ack 2 win 2920 <nop,nop,timestamp 67404 67403>
+
+\end{lstlisting}
+
+\section{Обычный повтор}
+
+\begin{lstlisting}
+c1:~# ./a.out default 10.30.0.2 9
+
+c3:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+21:11:29.625809 IP (tos 0x0, ttl 63, id 23857, offset 0, flags [DF], proto TCP (6), length 60) 10.10.0.2.47877 > 10.30.0.2.discard: S, cksum 0xc5b8 (correct), 965757680:965757680(0) win 5840 <mss 1460,sackOK,timestamp 137153 0,nop,wscale 1>
+21:11:29.658976 IP (tos 0x0, ttl 63, id 0, offset 0, flags [DF], proto TCP (6), length 60) 10.30.0.2.discard > 10.10.0.2.47877: S, cksum 0x3e9b (correct), 964249599:964249599(0) ack 965757681 win 2096 <mss 536,sackOK,timestamp 137166 137153,nop,wscale 1>
+21:11:29.659444 IP (tos 0x0, ttl 63, id 23858, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.47877 > 10.30.0.2.discard: ., cksum 0x6681 (correct), ack 1 win 2920 <nop,nop,timestamp 137165 137166>
+21:11:29.660167 IP (tos 0x0, ttl 63, id 23859, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.47877 > 10.30.0.2.discard: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 137165 137166>
+21:11:29.717716 IP (tos 0x0, ttl 63, id 23860, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.47877 > 10.30.0.2.discard: . 101:625(524) ack 1 win 2920 <nop,nop,timestamp 137172 137166>
+
+21:11:29.718130 IP (tos 0x0, ttl 63, id 24526, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.discard > 10.10.0.2.47877: ., cksum 0x2bdd (correct), ack 1 win 1048 <nop,nop,timestamp 137172 137165,nop,nop,sack 1 {101:625}>
+21:11:29.768473 IP (tos 0x0, ttl 63, id 23861, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.47877 > 10.30.0.2.discard: . 625:1149(524) ack 1 win 2920 <nop,nop,timestamp 137177 137172>
+21:11:29.769176 IP (tos 0x0, ttl 63, id 24527, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.discard > 10.10.0.2.47877: ., cksum 0x29cc (correct), ack 1 win 1048 <nop,nop,timestamp 137177 137165,nop,nop,sack 1 {101:1149}>
+21:11:29.818714 IP (tos 0x0, ttl 63, id 23862, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.47877 > 10.30.0.2.discard: . 1149:1673(524) ack 1 win 2920 <nop,nop,timestamp 137182 137177>
+21:11:29.819553 IP (tos 0x0, ttl 63, id 24528, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.discard > 10.10.0.2.47877: ., cksum 0x27bb (correct), ack 1 win 1048 <nop,nop,timestamp 137182 137165,nop,nop,sack 1 {101:1673}>
+
+21:11:29.820786 IP (tos 0x0, ttl 63, id 23863, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.47877 > 10.30.0.2.discard: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 137182 137182>
+21:11:29.821312 IP (tos 0x0, ttl 63, id 24529, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.47877: ., cksum 0x6728 (correct), ack 1673 win 1048 <nop,nop,timestamp 137182 137182>
+21:11:29.823275 IP (tos 0x0, ttl 63, id 23864, offset 0, flags [DF], proto TCP (6), length 80) 10.10.0.2.47877 > 10.30.0.2.discard: P, cksum 0x9df2 (correct), 1673:1701(28) ack 1 win 2920 <nop,nop,timestamp 137182 137182>
+21:11:29.823856 IP (tos 0x0, ttl 63, id 24530, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.47877: ., cksum 0x670c (correct), ack 1701 win 1048 <nop,nop,timestamp 137182 137182>
+21:11:29.835249 IP (tos 0x0, ttl 63, id 23865, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.47877 > 10.30.0.2.discard: P 1701:1801(100) ack 1 win 2920 <nop,nop,timestamp 137183 137182>
+21:11:29.863492 IP (tos 0x0, ttl 63, id 23866, offset 0, flags [DF], proto TCP (6), length 252) 10.10.0.2.47877 > 10.30.0.2.discard: FP 1801:2001(200) ack 1 win 2920 <nop,nop,timestamp 137186 137182>
+
+21:11:29.864494 IP (tos 0x0, ttl 63, id 24531, offset 0, flags [DF], proto TCP (6), length 64) 10.30.0.2.discard > 10.10.0.2.47877: ., cksum 0x1915 (correct), ack 1701 win 1048 <nop,nop,timestamp 137186 137182,nop,nop,sack 1 {1801:2002}>
+21:11:30.158589 IP (tos 0x0, ttl 63, id 23867, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.47877 > 10.30.0.2.discard: P 1701:1801(100) ack 1 win 2920 <nop,nop,timestamp 137216 137186>
+21:11:30.160136 IP (tos 0x0, ttl 63, id 24532, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.47877: ., cksum 0x659b (correct), ack 2002 win 1048 <nop,nop,timestamp 137216 137216>
+21:11:30.182000 IP (tos 0x0, ttl 63, id 24533, offset 0, flags [DF], proto TCP (6), length 52) 10.30.0.2.discard > 10.10.0.2.47877: F, cksum 0x659a (correct), 1:1(0) ack 2002 win 1048 <nop,nop,timestamp 137216 137216>
+21:11:30.182809 IP (tos 0x0, ttl 63, id 0, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.47877 > 10.30.0.2.discard: ., cksum 0x5e49 (correct), ack 2 win 2920 <nop,nop,timestamp 137217 137216>
+
+******** delay 700 ms + drop 10 packets ********
+c3:~# /etc/drop 10
+I will drop every 10 packet (counting from 1).
+c3:~# /etc/delay 700
+c3:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+21:17:48.960522 IP (tos 0x0, ttl 63, id 1445, offset 0, flags [DF], proto TCP (6), length 60) 10.10.0.2.59807 > 10.50.0.2.discard: S, cksum 0x3d1f (correct), 2615586389:2615586389(0) win 5840 <mss 1460,sackOK,timestamp 175088 0,nop,wscale 1>
+21:17:51.878386 IP (tos 0x0, ttl 63, id 1446, offset 0, flags [DF], proto TCP (6), length 60) 10.10.0.2.59807 > 10.50.0.2.discard: S, cksum 0x3bf3 (correct), 2615586389:2615586389(0) win 5840 <mss 1460,sackOK,timestamp 175388 0,nop,wscale 1>
+21:17:52.034486 IP (tos 0x0, ttl 62, id 0, offset 0, flags [DF], proto TCP (6), length 60) 10.50.0.2.discard > 10.10.0.2.59807: S, cksum 0x42fe (correct), 2657202475:2657202475(0) ack 2615586390 win 5792 <mss 536,sackOK,timestamp 175392 175388,nop,wscale 1>
+21:17:52.036523 IP (tos 0x0, ttl 63, id 1447, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.59807 > 10.50.0.2.discard: ., cksum 0x7951 (correct), ack 1 win 2920 <nop,nop,timestamp 175403 175392>
+21:17:52.037461 IP (tos 0x0, ttl 63, id 1448, offset 0, flags [DF], proto TCP (6), length 152) 10.10.0.2.59807 > 10.50.0.2.discard: P 1:101(100) ack 1 win 2920 <nop,nop,timestamp 175403 175392>
+21:17:52.062555 IP (tos 0x0, ttl 62, id 7180, offset 0, flags [DF], proto TCP (6), length 52) 10.50.0.2.discard > 10.10.0.2.59807: ., cksum 0x7905 (correct), ack 101 win 2896 <nop,nop,timestamp 175392 175403>
+21:17:52.064055 IP (tos 0x0, ttl 63, id 1449, offset 0, flags [DF], proto TCP (6), length 252) 10.10.0.2.59807 > 10.50.0.2.discard: P 101:301(200) ack 1 win 2920 <nop,nop,timestamp 175406 175392>
+21:17:52.107438 IP (tos 0x0, ttl 62, id 7181, offset 0, flags [DF], proto TCP (6), length 52) 10.50.0.2.discard > 10.10.0.2.59807: ., cksum 0x762e (correct), ack 301 win 3420 <nop,nop,timestamp 175392 175406>
+21:17:52.109439 IP (tos 0x0, ttl 63, id 1450, offset 0, flags [DF], proto TCP (6), length 552) 10.10.0.2.59807 > 10.50.0.2.discard: P 301:801(500) ack 1 win 2920 <nop,nop,timestamp 175411 175392>
++++ 3 times: ack 801 win 3944
+21:17:52.131673 IP (tos 0x0, ttl 62, id 7182, offset 0, flags [DF], proto TCP (6), length 52) 10.50.0.2.discard > 10.10.0.2.59807: ., cksum 0x7229 (correct), ack 801 win 3944 <nop,nop,timestamp 175392 175411>
+21:17:52.133089 IP (tos 0x0, ttl 63, id 1451, offset 0, flags [DF], proto TCP (6), length 252) 10.10.0.2.59807 > 10.50.0.2.discard: P 801:1001(200) ack 1 win 2920 <nop,nop,timestamp 175413 175392>
+21:17:52.189243 IP (tos 0x0, ttl 63, id 1452, offset 0, flags [DF], proto TCP (6), length 576) 10.10.0.2.59807 > 10.50.0.2.discard: . 1001:1525(524) ack 1 win 2920 <nop,nop,timestamp 175419 175392>
+21:17:52.189860 IP (tos 0x0, ttl 62, id 7183, offset 0, flags [DF], proto TCP (6), length 64) 10.50.0.2.discard > 10.10.0.2.59807: ., cksum 0x9dbb (correct), ack 801 win 3944 <nop,nop,timestamp 175392 175411,nop,nop,sack 1 {1001:1525}>
+21:17:52.242174 IP (tos 0x0, ttl 63, id 1453, offset 0, flags [DF], proto TCP (6), length 528) 10.10.0.2.59807 > 10.50.0.2.discard: FP 1525:2001(476) ack 1 win 2920 <nop,nop,timestamp 175424 175392>
+21:17:52.243370 IP (tos 0x0, ttl 62, id 7184, offset 0, flags [DF], proto TCP (6), length 64) 10.50.0.2.discard > 10.10.0.2.59807: ., cksum 0x9bde (correct), ack 801 win 3944 <nop,nop,timestamp 175392 175411,nop,nop,sack 1 {1001:2002}>
+
+21:17:52.547603 IP (tos 0x0, ttl 63, id 1454, offset 0, flags [DF], proto TCP (6), length 252) 10.10.0.2.59807 > 10.50.0.2.discard: P 801:1001(200) ack 1 win 2920 <nop,nop,timestamp 175454 175392>
+21:17:52.549081 IP (tos 0x0, ttl 62, id 7185, offset 0, flags [DF], proto TCP (6), length 52) 10.50.0.2.discard > 10.10.0.2.59807: ., cksum 0x6b41 (correct), ack 2002 win 4468 <nop,nop,timestamp 175392 175454>
+21:17:52.655812 IP (tos 0x0, ttl 62, id 7186, offset 0, flags [DF], proto TCP (6), length 52) 10.50.0.2.discard > 10.10.0.2.59807: F, cksum 0x6b40 (correct), 1:1(0) ack 2002 win 4468 <nop,nop,timestamp 175392 175454>
+21:17:52.656953 IP (tos 0x0, ttl 63, id 0, offset 0, flags [DF], proto TCP (6), length 52) 10.10.0.2.59807 > 10.50.0.2.discard: ., cksum 0x7141 (correct), ack 2 win 2920 <nop,nop,timestamp 175465 175392>
+\end{lstlisting}
+
+\section{Неудачная попытка соединении с портом}
+
+Приведена попытка соединения с портом, который никто не слушает.
+\begin{lstlisting}
+c1:~# ./a.out default 10.50.0.2 12 1 20
+connect: Connection refused
+
+c2:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+21:28:00.486864 IP (tos 0x0, ttl 64, id 54158, offset 0, flags [DF], proto TCP (6), length 60) 10.10.0.2.41849 > 10.50.0.2.12: S, cksum 0xbded (correct), 3612428638:3612428638(0) win 5840 <mss 1460,sackOK,timestamp 236240 0,nop,wscale 1>
+21:28:00.487546 IP (tos 0x0, ttl 61, id 0, offset 0, flags [DF], proto TCP (6), length 40) 10.50.0.2.12 > 10.10.0.2.41849: R, cksum 0xd75a (correct), 0:0(0) ack 3612428639 win 0
+
+c3:~# tcpdump -v -i eth0 tcp
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+21:28:00.465594 IP (tos 0x0, ttl 63, id 54158, offset 0, flags [DF], proto TCP (6), length 60) 10.10.0.2.41849 > 10.50.0.2.12: S, cksum 0xbded (correct), 3612428638:3612428638(0) win 5840 <mss 1460,sackOK,timestamp 236240 0,nop,wscale 1>
+21:28:00.466013 IP (tos 0x0, ttl 62, id 0, offset 0, flags [DF], proto TCP (6), length 40) 10.50.0.2.12 > 10.10.0.2.41849: R, cksum 0xd75a (correct), 0:0(0) ack 3612428639 win 0
+\end{lstlisting}
+
+\section{Опыт с PMTU}
+
+Во-первых, нужно отключить коррекцию величины MSS на маршрутизаторах c3 и c4.
+\begin{lstlisting}
+c3:~# iptables -F
+c4:~# iptables -F
+c4:~# ip r show cache
+10.10.0.2 from 10.50.0.2 via 10.30.0.1 dev eth0  src 10.50.0.1 
+    cache <src-direct>  mtu 576 advmss 536 hoplimit 64 iif eth1
+local 10.30.0.2 from 10.30.0.1 dev lo  src 10.30.0.2 
+    cache <local,src-direct>  iif eth0
+10.50.0.2 from 10.10.0.2 dev eth1  src 10.30.0.2 
+    cache  mtu 1500 advmss 1460 hoplimit 64 iif eth0
+\end{lstlisting}
+
+После этих подготовительных действий мы наверное увидим PMTU в действии при попытке соединится с c1 на c6.
+
+\begin{lstlisting}
+*** Compile nagle.c ***
+c1:~# gcc -std=gnu99 nagle.c
+c1:~# ./a.out cork 10.50.0.2 9 1 30
+
+*** Dump in c2 ***
+c2:~# tcpdump -n -i eth0 tcp or icmp
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+22:02:16.378858 IP 10.10.0.2.53847 > 10.50.0.2.9: S 1280772290:1280772290(0) win 5840 <mss 1460,sackOK,timestamp 32861 0,nop,wscale 1>
+22:02:16.379756 IP 10.50.0.2.9 > 10.10.0.2.53847: S 1282695380:1282695380(0) ack 1280772291 win 5792 <mss 1460,sackOK,timestamp 32865 32861,nop,wscale 1>
+22:02:16.379926 IP 10.10.0.2.53847 > 10.50.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 32861 32865>
+22:02:16.516007 IP 10.10.0.2.53847 > 10.50.0.2.9: P 1:1401(1400) ack 1 win 2920 <nop,nop,timestamp 32882 32865>
+
+22:02:16.517322 IP 10.20.0.2 > 10.10.0.2: ICMP 10.50.0.2 unreachable - need to frag (mtu 576), length 556
+
+22:02:16.518335 IP 10.10.0.2.53847 > 10.50.0.2.9: . 1:525(524) ack 1 win 2920 <nop,nop,timestamp 32882 32865>
+22:02:16.518440 IP 10.10.0.2.53847 > 10.50.0.2.9: . 525:1049(524) ack 1 win 2920 <nop,nop,timestamp 32882 32865>
+22:02:16.518462 IP 10.10.0.2.53847 > 10.50.0.2.9: P 1049:1401(352) ack 1 win 2920 <nop,nop,timestamp 32882 32865>
+22:02:16.521300 IP 10.50.0.2.9 > 10.10.0.2.53847: . ack 525 win 3432 <nop,nop,timestamp 32879 32882>
+22:02:16.521338 IP 10.50.0.2.9 > 10.10.0.2.53847: . ack 1049 win 3956 <nop,nop,timestamp 32879 32882>
+22:02:16.521349 IP 10.50.0.2.9 > 10.10.0.2.53847: . ack 1401 win 4480 <nop,nop,timestamp 32879 32882>
+22:02:16.566725 IP 10.10.0.2.53847 > 10.50.0.2.9: . 1401:1925(524) ack 1 win 2920 <nop,nop,timestamp 32887 32879>
+22:02:16.569286 IP 10.50.0.2.9 > 10.10.0.2.53847: . ack 1925 win 5004 <nop,nop,timestamp 32883 32887>
+22:02:16.616636 IP 10.10.0.2.53847 > 10.50.0.2.9: . 1925:2449(524) ack 1 win 2920 <nop,nop,timestamp 32892 32883>
+22:02:16.619906 IP 10.50.0.2.9 > 10.10.0.2.53847: . ack 2449 win 5528 <nop,nop,timestamp 32889 32892>
+22:02:16.665791 IP 10.10.0.2.53847 > 10.50.0.2.9: . 2449:2973(524) ack 1 win 2920 <nop,nop,timestamp 32897 32889>
+22:02:16.666937 IP 10.50.0.2.9 > 10.10.0.2.53847: . ack 2973 win 6052 <nop,nop,timestamp 32893 32897>
+22:02:16.680452 IP 10.10.0.2.53847 > 10.50.0.2.9: FP 2973:3001(28) ack 1 win 2920 <nop,nop,timestamp 32898 32893>
+22:02:16.702126 IP 10.50.0.2.9 > 10.10.0.2.53847: F 1:1(0) ack 3002 win 6052 <nop,nop,timestamp 32895 32898>
+22:02:16.702905 IP 10.10.0.2.53847 > 10.50.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 32898 32895>
+
+*** Dump in c6 ***
+c6:~# tcpdump -n -i eth0 tcp or icmp
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+22:02:16.655689 IP 10.10.0.2.53847 > 10.50.0.2.9: S 1280772290:1280772290(0) win 5840 <mss 1460,sackOK,timestamp 32861 0,nop,wscale 1>
+22:02:16.655773 IP 10.50.0.2.9 > 10.10.0.2.53847: S 1282695380:1282695380(0) ack 1280772291 win 5792 <mss 1460,sackOK,timestamp 32865 32861,nop,wscale 1>
+22:02:16.656372 IP 10.10.0.2.53847 > 10.50.0.2.9: . ack 1 win 2920 <nop,nop,timestamp 32861 32865>
+22:02:16.795945 IP 10.10.0.2.53847 > 10.50.0.2.9: . 1:525(524) ack 1 win 2920 <nop,nop,timestamp 32882 32865>
+22:02:16.795980 IP 10.10.0.2.53847 > 10.50.0.2.9: . 525:1049(524) ack 1 win 2920 <nop,nop,timestamp 32882 32865>
+22:02:16.795985 IP 10.10.0.2.53847 > 10.50.0.2.9: P 1049:1401(352) ack 1 win 2920 <nop,nop,timestamp 32882 32865>
+22:02:16.796045 IP 10.50.0.2.9 > 10.10.0.2.53847: . ack 525 win 3432 <nop,nop,timestamp 32879 32882>
+22:02:16.796147 IP 10.50.0.2.9 > 10.10.0.2.53847: . ack 1049 win 3956 <nop,nop,timestamp 32879 32882>
+22:02:16.796219 IP 10.50.0.2.9 > 10.10.0.2.53847: . ack 1401 win 4480 <nop,nop,timestamp 32879 32882>
+22:02:16.844241 IP 10.10.0.2.53847 > 10.50.0.2.9: . 1401:1925(524) ack 1 win 2920 <nop,nop,timestamp 32887 32879>
+22:02:16.844321 IP 10.50.0.2.9 > 10.10.0.2.53847: . ack 1925 win 5004 <nop,nop,timestamp 32883 32887>
+22:02:16.894425 IP 10.10.0.2.53847 > 10.50.0.2.9: . 1925:2449(524) ack 1 win 2920 <nop,nop,timestamp 32892 32883>
+22:02:16.894572 IP 10.50.0.2.9 > 10.10.0.2.53847: . ack 2449 win 5528 <nop,nop,timestamp 32889 32892>
+22:02:16.942662 IP 10.10.0.2.53847 > 10.50.0.2.9: . 2449:2973(524) ack 1 win 2920 <nop,nop,timestamp 32897 32889>
+22:02:16.942700 IP 10.50.0.2.9 > 10.10.0.2.53847: . ack 2973 win 6052 <nop,nop,timestamp 32893 32897>
+22:02:16.957534 IP 10.10.0.2.53847 > 10.50.0.2.9: FP 2973:3001(28) ack 1 win 2920 <nop,nop,timestamp 32898 32893>
+22:02:16.977050 IP 10.50.0.2.9 > 10.10.0.2.53847: F 1:1(0) ack 3002 win 6052 <nop,nop,timestamp 32895 32898>
+22:02:16.980347 IP 10.10.0.2.53847 > 10.50.0.2.9: . ack 2 win 2920 <nop,nop,timestamp 32898 32895>
+\end{lstlisting}
+
+\end{document}

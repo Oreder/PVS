@@ -1,0 +1,129 @@
+\documentclass[a4paper,12pt]{article}
+
+\input{header.tex}
+
+\title{Отчёт по лабораторной работе \\ <<Механизмы протокола TCP>>}
+\author{Binh D. Nguyen}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+% Текст отчёта должен быть читаемым!!! Написанное здесь является рыбой.
+
+\section{Установка и разрыв соединения}
+
+Дампим интерфейсы с2 и с3 при попытке соединения с1  и с6 c cервером
+
+\begin{Verbatim}
+c1:~# telnet 10.50.0.2 9
+Trying 10.50.0.2...
+Connected to 10.50.0.2.
+Escape character is '^]'.
+123
+1234  
+
+c6:~# telnet 10.50.0.2 9
+
+c2:~# tcpdump -n -i eth0 tcp
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+20:18:34.163563 IP 10.10.0.2.40128 > 10.50.0.2.9: P 2641696858:2641696863(5) ack 2652137935 win 2920 <nop,nop,timestamp 4294949596 4294946630>
+20:18:34.164177 IP 10.50.0.2.9 > 10.10.0.2.40128: . ack 5 win 2896 <nop,nop,timestamp 4294949592 4294949596>
+20:24:10.734964 IP 10.10.0.2.40128 > 10.50.0.2.9: P 5:15(10) ack 1 win 2920 <nop,nop,timestamp 15957 4294949592>
+20:24:10.736084 IP 10.50.0.2.9 > 10.10.0.2.40128: . ack 15 win 2896 <nop,nop,timestamp 15953 15957>
+
+c3:~# tcpdump -n -i eth0 tcp
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), capture size 96 bytes
+20:18:34.150238 IP 10.10.0.2.40128 > 10.50.0.2.9: P 2641696858:2641696863(5) ack 2652137935 win 2920 <nop,nop,timestamp 4294949596 4294946630>
+20:18:34.150600 IP 10.50.0.2.9 > 10.10.0.2.40128: . ack 5 win 2896 <nop,nop,timestamp 4294949592 4294949596>
+20:24:10.721711 IP 10.10.0.2.40128 > 10.50.0.2.9: P 5:15(10) ack 1 win 2920 <nop,nop,timestamp 15957 4294949592>
+20:24:10.722453 IP 10.50.0.2.9 > 10.10.0.2.40128: . ack 15 win 2896 <nop,nop,timestamp 15953 15957>
+
+\end{Verbatim}
+
+\section{Окно получателя}
+
+Где что дампим.  Дампить без -t обязательно!
+
+\begin{Verbatim}
+окно получателя до нуля
+\end{Verbatim}
+
+\section{Окно отправителя}
+
+Где что дампим.
+
+\begin{Verbatim}
+окно отправителя растёт и растёт
+\end{Verbatim}
+
+\section{Нейгл и Мишналь}
+
+Где что дампим.  Дампить без -t обязательно!
+Мы должны увидеть, что мы посылаем неполный сегмент, как только подтверждены все неполные сегменты (даже если полные не подтверждены).
+
+\begin{Verbatim}
+увидеть хотя бы нейгла
+\end{Verbatim}
+
+\section{Аггрессивная буферизация}
+
+Где что дампим.  Дампить без -t обязательно!
+
+\begin{Verbatim}
+cork
+\end{Verbatim}
+
+\section{Отправка без задержки}
+
+Где что дампим.  Дампить без -t обязательно!
+
+\begin{Verbatim}
+увидеть, что nodelay не помогает, когда окно отправителя полное
+\end{Verbatim}
+
+\section{Быстрый повтор}
+
+Где что дампим.  Дампить без -t обязательно!
+
+\begin{Verbatim}
+увидеть быстрый повтор
+\end{Verbatim}
+
+\section{Обычный повтор}
+
+Где что дампим. Дампить без -t обязательно!
+
+\begin{Verbatim}
+увидеть не-быстрый повтор
+\end{Verbatim}
+
+\section{Неудачная попытка соединени с портом}
+
+Тут опт с попыткой соединения с портом, который никто не слушает.
+
+\section{Опыт с PMTU}
+
+Для опыта нужно на c3 и c4 отключить tcpclump.
+Надеюсь тут поможет команда iptables -F.
+Для сброса кеша MSS на с1 его можно тупо перегрузить.
+
+После этих подготовительных действий мы наверное увидим pmtu в действии при попытке соединится с c1 на c6.
+
+\begin{Verbatim}
+Дампить (tcp or icmp) на c2 eth0.
+\end{Verbatim}
+
+\section{Соединение с неверным портом}
+
+Что будет, если клиент пытается соединиться с портом, который не слушвет сервер.
+
+\begin{Verbatim}
+Дампить
+\end{Verbatim}
+
+\end{document}
