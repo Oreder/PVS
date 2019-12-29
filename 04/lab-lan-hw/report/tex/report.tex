@@ -1,0 +1,89 @@
+\documentclass[a4paper,12pt]{article}
+
+\input{header.tex}
+
+\title{Отчёт по лабораторной работе \\ <<Локальные сети>>}
+\author{Здесь Ф.~И.~О}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+% Текст отчёта должен быть читаемым!!! Написанное здесь является рыбой.
+
+\section{Получение адреса по DHCP}
+
+Где что дампим (дампить с -tenv -s 1000).
+
+\begin{Verbatim}
+получение "случайного" адреса
+\end{Verbatim}
+
+Где что дампим.
+
+\begin{Verbatim}
+получение "фиксированого" адреса
+\end{Verbatim}
+
+
+\section{Использование VPN}
+
+\begin{Verbatim}
+ip r на маршрутизаторе после VPN и работы RIP
+\end{Verbatim}
+
+\begin{Verbatim}
+ip -4 a  на маршрутизаторе
+\end{Verbatim}
+
+\begin{Verbatim}
+просшулка сообщений RIP на tun0
+\end{Verbatim}
+
+Проверка работы VPN
+
+\begin{Verbatim}
+Трейс с ws21 до s11
+\end{Verbatim}
+
+\section{Правила фильтации пакетов и трансляции пдресов}
+
+Где что дампим. 
+
+\begin{Verbatim}
+сценарий фильтрации
+\end{Verbatim}
+
+\begin{Verbatim}
+iptables -L -nv
+\end{Verbatim}
+
+\begin{Verbatim}
+iptables -L -nv -t nat
+\end{Verbatim}
+
+\section{Проверка трансляции SNAT}
+
+Где что дампим.
+
+\begin{Verbatim}
+дамп SNAT в LAN (как вариант -i any tcp)
+\end{Verbatim}
+
+\begin{Verbatim}
+дамп SNAT (снаружи)
+\end{Verbatim}
+
+
+\section{Проверка правил фильтрации}
+
+Используем telnet.
+
+\section{Проверка доступа к внутреннему серверу}
+
+Используем telnet / веб-браузер на реальной машине. 
+Должен быть виден DNAT и разрешённый доступ.
+
+\end{document}
